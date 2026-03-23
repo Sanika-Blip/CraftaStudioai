@@ -1,9 +1,8 @@
 // CraftaStudio — src/routes/connections.ts
 import type { FastifyInstance } from 'fastify'
-import { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
-
-const prisma = new PrismaClient()
+import prisma from '../lib/prisma'
+import { pathExists } from '../graph/cycleDetection'
 
 /** Zod schema for creating a connection edge */
 const CreateConnectionSchema = z.object({
@@ -48,8 +47,13 @@ export async function connectionsRoutes(app: FastifyInstance) {
       return reply.code(422).send({ error: parsed.error.flatten() })
     }
 
-    // TODO: Run cycleDetection.pathExists(fromBlockId, toBlockId) before creating
-    // to prevent circular dependencies in the block graph.
+    // Cycle guard — reject the edge if it would create a circular dependency.
+    const wouldCycle = await pathExists(parsed.data.projectId, parsed.data.fromBlockId, parsed.data.toBlockId)
+    if (wouldCycle) {
+      return reply.code(409).send({
+        error: 'Connection would create a circular dependency in the block graph',
+      })
+    }
 
     try {
       const connection = await prisma.connection.create({

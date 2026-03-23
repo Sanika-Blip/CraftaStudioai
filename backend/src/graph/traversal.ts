@@ -1,7 +1,5 @@
 // CraftaStudio — src/graph/traversal.ts
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import prisma from '../lib/prisma'
 
 /**
  * BFS — returns all block IDs that are affected (directly or transitively)

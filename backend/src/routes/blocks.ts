@@ -1,10 +1,8 @@
 // CraftaStudio — src/routes/blocks.ts
 import type { FastifyInstance } from 'fastify'
-import { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 import { BLOCK_TYPES } from '../../../shared/types/blocks'
-
-const prisma = new PrismaClient()
+import prisma from '../lib/prisma'
 
 /** Zod schema for creating a new block */
 const CreateBlockSchema = z.object({

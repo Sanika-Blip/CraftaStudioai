@@ -1,8 +1,6 @@
 // CraftaStudio — src/middleware/teamOwnership.ts
 import type { FastifyRequest, FastifyReply, HookHandlerDoneFunction } from 'fastify'
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import prisma from '../lib/prisma'
 
 /**
  * Middleware — verifies that the authenticated user's team owns the requested project.

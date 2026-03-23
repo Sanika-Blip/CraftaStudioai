@@ -1,7 +1,5 @@
 // CraftaStudio — src/graph/topologicalSort.ts
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import prisma from '../lib/prisma'
 
 /**
  * Kahn's Algorithm — returns a topological ordering of all blocks in a project.

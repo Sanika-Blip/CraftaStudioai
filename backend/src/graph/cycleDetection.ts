@@ -1,7 +1,5 @@
 // CraftaStudio — src/graph/cycleDetection.ts
-import { PrismaClient } from '@prisma/client'
-
-const prisma = new PrismaClient()
+import prisma from '../lib/prisma'
 
 /**
  * DFS — checks whether a path already exists from `sourceId` to `targetId`.

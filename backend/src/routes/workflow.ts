@@ -1,10 +1,8 @@
 // CraftaStudio — src/routes/workflow.ts
 import type { FastifyInstance } from 'fastify'
-import { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 import { blockQueue } from '../queue/blockQueue'
-
-const prisma = new PrismaClient()
+import prisma from '../lib/prisma'
 
 /** Zod schema for a workflow run request */
 const RunWorkflowSchema = z.object({
