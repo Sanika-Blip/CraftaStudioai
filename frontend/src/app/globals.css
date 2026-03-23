@@ -1,0 +1,113 @@
+// CraftaStudio — src/app/globals.css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * ─────────────────────────────────────────────────────────────
+ * CraftaStudio Design Tokens — Dark Theme
+ * ─────────────────────────────────────────────────────────────
+ */
+:root {
+  /* Brand */
+  --color-primary: 217 91% 60%;      /* #4A90FA — electric blue */
+  --color-accent:  270 80% 65%;      /* #A855F7 — violet */
+
+  /* Surfaces */
+  --color-surface:         222 22% 9%;   /* #0E1117 */
+  --color-surface-raised:  222 20% 13%;  /* #181D27 */
+  --color-surface-overlay: 222 18% 18%;  /* #222839 */
+
+  /* Borders */
+  --color-border: 220 15% 20%;       /* #2A3145 */
+
+  /* Text */
+  --color-text-primary:   0 0% 95%;
+  --color-text-secondary: 220 10% 55%;
+  --color-text-muted:     220 10% 38%;
+
+  /* Canvas */
+  --color-canvas-bg:      222 25% 7%;   /* #0A0F1A */
+  --color-canvas-grid:    220 15% 16%;  /* #212840 */
+
+  /* Status */
+  --color-success: 142 71% 45%;
+  --color-warning: 38 92% 50%;
+  --color-error:   0 84% 60%;
+  --color-info:    199 89% 48%;
+
+  /* Block node type colours */
+  --color-block-data:        142 71% 45%;
+  --color-block-api:         199 89% 48%;
+  --color-block-ui:          270 80% 65%;
+  --color-block-service:     38 92% 50%;
+  --color-block-integration: 217 91% 60%;
+  --color-block-auth:        0 84% 60%;
+  --color-block-job:         300 60% 55%;
+
+  /* Spacing */
+  --topbar-height: 3.5rem;
+  --bottombar-height: 2.5rem;
+  --sidebar-width: 16rem;
+
+  /* Animation */
+  --transition-fast: 120ms ease;
+  --transition-base: 200ms ease;
+  --transition-slow: 350ms ease;
+}
+
+/* Force dark mode always */
+html {
+  color-scheme: dark;
+  background-color: hsl(222 25% 7%);
+  color: hsl(0 0% 95%);
+}
+
+body {
+  @apply bg-[hsl(var(--color-canvas-bg))] text-[hsl(var(--color-text-primary))] antialiased;
+  font-feature-settings: 'rlig' 1, 'calt' 1;
+}
+
+/* React Flow overrides */
+.react-flow__background {
+  background-color: hsl(var(--color-canvas-bg)) !important;
+}
+
+.react-flow__edge-path {
+  stroke: hsl(var(--color-border)) !important;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: hsl(var(--color-surface));
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--color-border));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(217 91% 60% / 0.6);
+}
+
+/* Utility classes */
+@layer utilities {
+  .glass {
+    @apply bg-[hsl(var(--color-surface-overlay)/0.8)] backdrop-blur-md border border-[hsl(var(--color-border)/0.5)];
+  }
+
+  .text-primary {
+    color: hsl(var(--color-text-primary));
+  }
+
+  .text-secondary {
+    color: hsl(var(--color-text-secondary));
+  }
+
+  .text-muted {
+    color: hsl(var(--color-text-muted));
+  }
+}

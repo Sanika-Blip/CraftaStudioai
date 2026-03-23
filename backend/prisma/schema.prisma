@@ -1,0 +1,121 @@
+// CraftaStudio — prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Team — top-level tenant owning multiple projects
+// ─────────────────────────────────────────────────────────────
+model Team {
+  id        String    @id @default(uuid())
+  name      String
+  createdAt DateTime  @default(now())
+  projects  Project[]
+
+  @@map("teams")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Project — container for a single architecture canvas
+// ─────────────────────────────────────────────────────────────
+model Project {
+  id           String        @id @default(uuid())
+  teamId       String
+  name         String
+  createdAt    DateTime      @default(now())
+  team         Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  blocks       Block[]
+  connections  Connection[]
+  workflowRuns WorkflowRun[]
+
+  @@index([teamId])
+  @@map("projects")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Block — an architectural node (data, api, ui, etc.)
+// blockJson stores the full BlockNodeData as JSONB
+// ─────────────────────────────────────────────────────────────
+model Block {
+  id                String       @id @default(uuid())
+  projectId         String
+  blockType         String       // Maps to BlockType in shared/types/blocks.ts
+  blockJson         Json         // Full block definition including schema fields
+  version           String       @default("1.0.0")
+  lastGeneratedHash String?      // SHA-256 of last generated output — for change detection
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  project           Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  outConnections    Connection[] @relation("FromBlock")
+  inConnections     Connection[] @relation("ToBlock")
+  blockOutputs      BlockOutput[]
+
+  @@index([projectId])
+  @@index([blockType])
+  @@map("blocks")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Connection — directed edge between two blocks
+// ─────────────────────────────────────────────────────────────
+model Connection {
+  id             String   @id @default(uuid())
+  projectId      String
+  fromBlockId    String
+  toBlockId      String
+  connectionType String   @default("dependency") // 'dependency' | 'data-flow' | 'event'
+  createdAt      DateTime @default(now())
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fromBlock      Block    @relation("FromBlock", fields: [fromBlockId], references: [id], onDelete: Cascade)
+  toBlock        Block    @relation("ToBlock",   fields: [toBlockId],   references: [id], onDelete: Cascade)
+
+  @@unique([fromBlockId, toBlockId])
+  @@index([projectId])
+  @@map("connections")
+}
+
+// ─────────────────────────────────────────────────────────────
+// WorkflowRun — one execution of the AI generation pipeline
+// sharedContextJson holds the SharedContext built by the Planner
+// ─────────────────────────────────────────────────────────────
+model WorkflowRun {
+  id                 String        @id @default(uuid())
+  projectId          String
+  prompt             String
+  status             String        @default("queued") // 'queued' | 'running' | 'done' | 'error'
+  sharedContextJson  Json?
+  createdAt          DateTime      @default(now())
+  project            Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  blockOutputs       BlockOutput[]
+
+  @@index([projectId])
+  @@index([status])
+  @@map("workflow_runs")
+}
+
+// ─────────────────────────────────────────────────────────────
+// BlockOutput — per-agent code generation result for one run
+// ─────────────────────────────────────────────────────────────
+model BlockOutput {
+  id          String      @id @default(uuid())
+  runId       String
+  blockId     String
+  blockType   String
+  outputCode  String      // Raw generated code string or JSON mapping filename → content
+  tokensUsed  Int         @default(0)
+  status      String      @default("pending") // 'pending' | 'done' | 'error'
+  errorMsg    String?
+  createdAt   DateTime    @default(now())
+  run         WorkflowRun @relation(fields: [runId],   references: [id], onDelete: Cascade)
+  block       Block       @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([blockId])
+  @@map("block_outputs")
+}

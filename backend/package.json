@@ -1,0 +1,31 @@
+{
+  "name": "craftastudio-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "nodemon --exec ts-node src/app.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/app.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fastify": "^4.27.0",
+    "@fastify/cors": "^9.0.1",
+    "@fastify/websocket": "^8.3.1",
+    "@prisma/client": "^5.15.0",
+    "zod": "^3.23.8",
+    "bullmq": "^5.7.5",
+    "ioredis": "^5.4.1",
+    "jose": "^5.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "ts-node": "^10.9.2",
+    "nodemon": "^3.1.3",
+    "prisma": "^5.15.0",
+    "@types/node": "^20.14.2"
+  }
+}

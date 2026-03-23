@@ -1,0 +1,13 @@
+{
+  "plugins": [
+    {
+      "src": "postcss-import"
+    },
+    {
+      "src": "tailwindcss"
+    },
+    {
+      "src": "autoprefixer"
+    }
+  ]
+}
