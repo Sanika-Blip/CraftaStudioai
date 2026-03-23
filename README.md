@@ -1,53 +1,57 @@
-# CraftaStudio
+<div align="center">
+
+# ✦ CraftaStudio
 
 **Architecture-first AI code generation.**
 
-[![Phase MVP](https://img.shields.io/badge/Phase-MVP-black?style=flat-square)](#)
-[![License MIT](https://img.shields.io/badge/License-MIT-black?style=flat-square)](#)
-[![Stack](https://img.shields.io/badge/Stack-Next.js%20%7C%20Fastify%20%7C%20Claude-black?style=flat-square)](#)
+[![Status](https://img.shields.io/badge/Status-Early%20Access-475569?style=flat-square&labelColor=1e293b)](https://github.com/pranavgawaii/craftastudio)
+[![License](https://img.shields.io/badge/License-MIT-475569?style=flat-square&labelColor=1e293b)](https://opensource.org/licenses/MIT)
+[![Stack](https://img.shields.io/badge/Stack-Next.js%20|%20Fastify%20|%20Python-475569?style=flat-square&labelColor=1e293b)](https://github.com/pranavgawaii/craftastudio)
 
-> Prompt your architecture. Refine the flow. Let parallel agents build every layer — simultaneously.
+*Prompt your architecture. Refine the flow.<br>Let parallel agents build every layer — simultaneously.*
 
 ---
 
-### The Problem
+</div>
 
-Current AI code capabilities are constrained to single-file, single-prompt interactions. They generate your API without comprehensive knowledge of your schema, and your UI without awareness of your routes. Every generated piece exists as an isolated island.
+<br>
 
-The result is hours spent stitching together disjointed code.
+## ✧ The Paradigm
+
+Current AI code capabilities are constrained. They generate your API without comprehensive knowledge of your schema, and your UI without awareness of your routes. Every generated piece exists as an isolated island, leaving you to stitch together disjointed code.
 
 **CraftaStudio fundamentally changes this dynamic: the architecture is the input — not the prompt.**
 
----
 
-### How It Works
+
+## ✧ Execution Flow
 
 ```text
-Prompt  →  Planner AI  →  Canvas Blocks  →  SharedContext  →  Parallel Agents  →  Codebase
+Prompt → Planner AI → Canvas Blocks → SharedContext → Parallel Agents → Codebase
 ```
 
-1. **Prompt** — Write what you want to build. 
+1. **Prompt** — Describe the system you want to build. 
 2. **Plan** — The Planner AI translates your prompt into a visual architecture of interconnected blocks.
-3. **Refine** — Review, modify, and expand the generated architecture on the interactive canvas.
-4. **Generate** — Parallel Claude agents simultaneously receive the global context and build their respective layers.
+3. **Refine** — Review, modify, and manually sculpt the generated architecture on the interactive canvas.
+4. **Generate** — Parallel AI agents simultaneously receive the global context and build their respective layers.
 5. **Merge** — Complete outputs undergo systematic assembly into a unified, deployment-ready codebase.
 
-No agent operates in the dark. Every generated asset understands the complete system.
+<br>
 
----
+## ✧ Tech Stack
 
-### Tech Stack
+| Layer | Technologies |
+| --- | --- |
+| **Frontend** | Next.js 14, TypeScript, React Flow, Zustand, Tailwind CSS |
+| **Backend** | Fastify, PostgreSQL, Prisma ORM, BullMQ, Redis, Zod |
+| **Agents** | Python (FastAPI), LangGraph, Anthropic Claude 3.5 |
+| **Infra** | Vercel, Railway, Cloudflare R2, Upstash |
 
-- **Frontend:** Next.js 14, TypeScript, React Flow, Zustand, Tailwind CSS, Monaco
-- **Backend:** Fastify, PostgreSQL, Prisma ORM, BullMQ, Redis, Zod
-- **Agents:** Python (FastAPI), LangGraph, Anthropic Claude
-- **Infrastructure:** Vercel, Railway / Render, Cloudflare R2, Upstash Redis
+<br>
 
----
+## ✧ Quick Start
 
-### Local Setup
-
-**Dependencies required:** Node 20+, Python 3.11+, PostgreSQL 15+, Redis 7+
+**Requirements:** Node 20+, Python 3.11+, PostgreSQL 15+, Redis 7+
 
 ```bash
 # 1. Clone & environment
@@ -55,48 +59,29 @@ git clone https://github.com/pranavgawaii/craftastudio.git
 cd craftastudio
 cp .env.example .env
 
-# 2. Install dependencies globally
+# 2. Install dependencies across the workspace
 npm run install:all
 
-# 3. Provision the database
-cd backend && npx prisma migrate dev
+# 3. Provision the local database
+cd backend && npx prisma migrate dev && cd ..
 
 # 4. Spin up the cluster
-cd ..
 npm run dev
-# Services available: Frontend :3000 | Backend :3001 | Agents :8000
 ```
+> Services will boot simultaneously: **Frontend** `:3000` | **Backend** `:3001` | **Agents** `:8000`
 
----
+<br>
 
-### Contribution Guidelines
+## ✧ Contributing
 
-We enforce strict branch naming and commit conventions to maintain a clean history.
+We maintain a pristine, production-grade repository. Please read our **[Engineering Handbook (CONTRIBUTING.md)](./CONTRIBUTING.md)** before opening a PR.
 
-```bash
-git checkout dev
-git pull origin dev
-git checkout -b feature/your-feature
-```
+- **Checkouts:** Always branch from `dev`. 
+- **Commits:** Strict conventional commits (e.g., `feat: [feature]`, `fix: [bug]`).
+- **Sacred Contract:** Do not modify `shared/types/blocks.ts` without Tech Lead approval.
 
-**Branch Prefixes:**
-- `feature/`
-- `fix/`
-- `refactor/`
+<br>
 
-**Commit Syntax:**
-Keep commits under 6 words total. No explanations.
-```text
-feat: add planner route
-fix: prisma singleton
-docs: update readme
-chore: cleanup structure
-```
-
----
-
-### Vision
-
-Boilerplate is wasted potential. CraftaStudio compresses the gap between system design and running code from weeks down to minutes. 
-
-**Prompt the architecture. Refine the blocks. Get the codebase.**
+<div align="center">
+  <i>Boilerplate is wasted potential.<br>Prompt the architecture. Refine the blocks. Get the codebase.</i>
+</div>
