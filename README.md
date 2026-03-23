@@ -4,9 +4,9 @@
 
 **Architecture-first AI code generation.**
 
-[![Phase MVP](https://img.shields.io/badge/Status-Early_Access-18181b?style=flat-square)](https://github.com/pranavgawaii/craftastudio)
-[![License MIT](https://img.shields.io/badge/License-MIT-18181b?style=flat-square)](https://opensource.org/licenses/MIT)
-[![Stack](https://img.shields.io/badge/Stack-Next.js_|_Fastify_|_Python-18181b?style=flat-square)](https://github.com/pranavgawaii/craftastudio)
+[![Status](https://img.shields.io/badge/Status-Early%20Access-475569?style=flat-square&labelColor=1e293b)](https://github.com/pranavgawaii/craftastudio)
+[![License](https://img.shields.io/badge/License-MIT-475569?style=flat-square&labelColor=1e293b)](https://opensource.org/licenses/MIT)
+[![Stack](https://img.shields.io/badge/Stack-Next.js%20|%20Fastify%20|%20Python-475569?style=flat-square&labelColor=1e293b)](https://github.com/pranavgawaii/craftastudio)
 
 *Prompt your architecture. Refine the flow.<br>Let parallel agents build every layer — simultaneously.*
 
@@ -22,13 +22,7 @@ Current AI code capabilities are constrained. They generate your API without com
 
 **CraftaStudio fundamentally changes this dynamic: the architecture is the input — not the prompt.**
 
-<br>
 
-<div align="center">
-  <img src="https://via.placeholder.com/900x450/09090b/fafafa?text=CraftaStudio+Canvas+Mockup" alt="CraftaStudio Canvas" width="100%" style="border-radius: 12px; border: 1px solid #27272a;"/>
-</div>
-
-<br>
 
 ## ✧ Execution Flow
 
