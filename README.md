@@ -1,193 +1,102 @@
 # CraftaStudio
 
-> Design your architecture. Let parallel AI agents build it.
+**Architecture-first AI code generation.**
 
-CraftaStudio is an **architecture-first AI code generation platform**. You draw your system as a visual block diagram — data models, APIs, UI, jobs — and the platform generates every layer simultaneously using parallel Claude agents, all sharing the same architectural context.
+[![Phase MVP](https://img.shields.io/badge/Phase-MVP-black?style=flat-square)](#)
+[![License MIT](https://img.shields.io/badge/License-MIT-black?style=flat-square)](#)
+[![Stack](https://img.shields.io/badge/Stack-Next.js%20%7C%20Fastify%20%7C%20Claude-black?style=flat-square)](#)
 
----
-
-## The Problem
-
-AI code generators are prompt-in, code-out tools. They work for one file at a time. They don't know your schema when writing your API, or your API when writing your UI. Every generated piece is an island — and you spend hours stitching them together.
-
-CraftaStudio solves this by making the **architecture the input**, not the prompt.
+> Prompt your architecture. Refine the flow. Let parallel agents build every layer — simultaneously.
 
 ---
 
-## How It Works
+### The Problem
 
-```
-User draws blocks on canvas
-         ↓
-Planner AI reads the full diagram
-         ↓
-Builds a SharedContext (entities, routes, conventions)
-         ↓
-Parallel agents receive the same context
-         ↓
-Each agent generates its layer (DB schema, API, UI, jobs)
-         ↓
-Merge Engine assembles a consistent, downloadable codebase
+Current AI code capabilities are constrained to single-file, single-prompt interactions. They generate your API without comprehensive knowledge of your schema, and your UI without awareness of your routes. Every generated piece exists as an isolated island.
+
+The result is hours spent stitching together disjointed code.
+
+**CraftaStudio fundamentally changes this dynamic: the architecture is the input — not the prompt.**
+
+---
+
+### How It Works
+
+```text
+Prompt  →  Planner AI  →  Canvas Blocks  →  SharedContext  →  Parallel Agents  →  Codebase
 ```
 
-No agent works in isolation. Every piece of generated code is aware of the rest of the system.
+1. **Prompt** — Write what you want to build. 
+2. **Plan** — The Planner AI translates your prompt into a visual architecture of interconnected blocks.
+3. **Refine** — Review, modify, and expand the generated architecture on the interactive canvas.
+4. **Generate** — Parallel Claude agents simultaneously receive the global context and build their respective layers.
+5. **Merge** — Complete outputs undergo systematic assembly into a unified, deployment-ready codebase.
+
+No agent operates in the dark. Every generated asset understands the complete system.
 
 ---
 
-## Tech Stack
+### Tech Stack
 
-**Frontend**
-- Next.js 14 (App Router) + TypeScript
-- React Flow (`@xyflow/react`) — visual canvas
-- Tailwind CSS — dark theme
-- Zustand — canvas state
-- Monaco Editor — in-app code preview
-- Clerk — authentication
-- Framer Motion — animations
-
-**Backend**
-- Fastify + TypeScript
-- Prisma ORM + PostgreSQL
-- BullMQ + Redis — parallel agent job queue
-- Zod — validation
-
-**AI Agents**
-- FastAPI (Python) + LangGraph
-- Anthropic Claude (claude-sonnet-4-5)
-- Shared context broadcast pattern
-
-**Infrastructure**
-- Vercel — frontend
-- Railway / Render — backend + agent service
-- Cloudflare R2 — generated file storage
-- Upstash Redis — queue
+- **Frontend:** Next.js 14, TypeScript, React Flow, Zustand, Tailwind CSS, Monaco
+- **Backend:** Fastify, PostgreSQL, Prisma ORM, BullMQ, Redis, Zod
+- **Agents:** Python (FastAPI), LangGraph, Anthropic Claude
+- **Infrastructure:** Vercel, Railway / Render, Cloudflare R2, Upstash Redis
 
 ---
 
-## Folder Structure
+### Local Setup
 
-```
-craftastudio/
-├── frontend/                  # Next.js 14 App Router
-│   └── src/
-│       ├── app/
-│       │   ├── canvas/        # Main workspace page
-│       │   └── layout.tsx
-│       └── components/
-│           └── canvas/        # BlockNode, PlannerNode, MergeEngineNode
-│
-├── backend/                   # Fastify API server
-│   ├── prisma/
-│   │   └── schema.prisma      # DB schema (Teams, Projects, Blocks, Runs)
-│   └── src/
-│       ├── routes/            # blocks, connections, workflow
-│       ├── middleware/        # validateBlockType, teamOwnership
-│       ├── graph/             # BFS traversal, DFS cycle detection, Kahn sort
-│       └── queue/             # BullMQ block generation queue
-│
-├── agents/                    # Python FastAPI agent service
-│   ├── routes/
-│   │   ├── plan.py            # POST /plan — Planner agent
-│   │   └── generate.py        # POST /generate — Generator agents
-│   ├── types_/
-│   │   └── context.py         # SharedContext Pydantic model
-│   └── prompts/               # System prompts per agent type
-│
-├── shared/
-│   └── types/
-│       └── blocks.ts          # Contract between all layers — DO NOT MODIFY without approval
-│
-└── docs/                      # Architecture diagrams, ADRs
-```
-
----
-
-## Running Locally
-
-### Prerequisites
-- Node.js 20+
-- Python 3.11+
-- PostgreSQL 15+
-- Redis 7+
-
-### 1 — Clone and set up environment
+**Dependencies required:** Node 20+, Python 3.11+, PostgreSQL 15+, Redis 7+
 
 ```bash
+# 1. Clone & environment
 git clone https://github.com/pranavgawaii/craftastudio.git
 cd craftastudio
 cp .env.example .env
-# Fill in all values in .env before continuing
-```
 
-### 2 — Frontend
+# 2. Install dependencies globally
+npm run install:all
 
-```bash
-cd frontend
-npm install
+# 3. Provision the database
+cd backend && npx prisma migrate dev
+
+# 4. Spin up the cluster
+cd ..
 npm run dev
-# → http://localhost:3000
-```
-
-### 3 — Backend
-
-```bash
-cd backend
-npm install
-npx prisma generate
-npx prisma migrate dev
-npm run dev
-# → http://localhost:3001
-```
-
-### 4 — Agents
-
-```bash
-cd agents
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
-# → http://localhost:8000
+# Services available: Frontend :3000 | Backend :3001 | Agents :8000
 ```
 
 ---
 
-## Contribution Workflow
+### Contribution Guidelines
 
-```
+We enforce strict branch naming and commit conventions to maintain a clean history.
+
+```bash
 git checkout dev
 git pull origin dev
-git checkout -b feature/your-feature-name
-
-# Build, test locally
-git push origin feature/your-feature-name
-# Open PR → targets dev → Pranav reviews → merge
+git checkout -b feature/your-feature
 ```
 
-**Branch naming:**
-- `feature/` — new feature
-- `fix/` — bug fix
-- `refactor/` — cleanup
+**Branch Prefixes:**
+- `feature/`
+- `fix/`
+- `refactor/`
 
-**Commit format:**
+**Commit Syntax:**
+Keep commits under 6 words total. No explanations.
+```text
+feat: add planner route
+fix: prisma singleton
+docs: update readme
+chore: cleanup structure
 ```
-feat: add merge engine download endpoint
-fix: handle cycle detection edge case
-docs: update architecture summary
-```
-
-Full rules: see [`CONTRIBUTING.md`](./CONTRIBUTING.md)
 
 ---
 
-## Vision
+### Vision
 
-Most developers spend more time on boilerplate than on ideas. CraftaStudio inverts this — your architecture diagram becomes your codebase. Draw the system you want. The platform builds the code you'd write anyway.
+Boilerplate is wasted potential. CraftaStudio compresses the gap between system design and running code from weeks down to minutes. 
 
-The goal is not to replace engineers. It's to compress the gap between **idea and running code** from weeks to minutes.
-
----
-
-## License
-
-MIT — see [`LICENSE`](./LICENSE)
+**Prompt the architecture. Refine the blocks. Get the codebase.**
