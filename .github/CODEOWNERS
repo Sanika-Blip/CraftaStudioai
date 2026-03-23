@@ -1,0 +1,8 @@
+# CODEOWNERS
+# Protect the sacred shared contract
+
+# Set default PR reviewer
+* @pranavgawaii
+
+# Enforce review for shared types (the contract)
+/shared/types/ @pranavgawaii
