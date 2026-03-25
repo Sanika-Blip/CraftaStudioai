@@ -81,7 +81,3 @@ We maintain a pristine, production-grade repository. Please read our **[Engineer
 - **Sacred Contract:** Do not modify `shared/types/blocks.ts` without Tech Lead approval.
 
 <br>
-
-<div align="center">
-  <i>Boilerplate is wasted potential.<br>Prompt the architecture. Refine the blocks. Get the codebase.</i>
-</div>
