@@ -85,3 +85,4 @@ We maintain a pristine, production-grade repository. Please read our **[Engineer
 ## ✧ Team of Craftastudio.ai
 
 - Pranav Gawai
+- Prathama Patil
