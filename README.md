@@ -81,3 +81,7 @@ We maintain a pristine, production-grade repository. Please read our **[Engineer
 - **Sacred Contract:** Do not modify `shared/types/blocks.ts` without Tech Lead approval.
 
 <br>
+
+## ✧ Team of Craftastudio.ai
+
+- Pranav Gawai
