@@ -1,5 +1,5 @@
 // CraftaStudio — next.config.ts
-import type { NextConfig } from 'next'
+import type { NextConfig } from next
 
 const nextConfig: NextConfig = {
   /** Enable strict React mode for better development warnings */
