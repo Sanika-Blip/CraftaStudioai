@@ -86,3 +86,4 @@ We maintain a pristine, production-grade repository. Please read our **[Engineer
 
 - Pranav Gawai
 - Prathama Patil
+- Vedant kirange
