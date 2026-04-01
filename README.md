@@ -14,6 +14,16 @@
 
 </div>
 
+
+<br>
+
+<div align="center">
+  <a href="https://docs.google.com/spreadsheets/d/1AFUnAV7H7CLntvOnUyZwQOjjM2YFrGO1gW-n4ofMPF4/edit?usp=sharing" target="_blank">
+    <img src="https://img.shields.io/badge/Team%20Activity%20Tracker-Google%20Sheets-34a853?style=for-the-badge&logo=googlesheets&logoColor=white" alt="Team Tracker" />
+  </a>
+  <p><i>Live task management and parallel execution roadmap.</i></p>
+</div>
+
 <br>
 
 ## ✧ The Paradigm
