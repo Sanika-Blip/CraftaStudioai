@@ -1,34 +1,44 @@
-// CraftaStudio — src/app/layout.tsx
-import type { Metadata } from 'next'
-import { ClerkProvider } from '@clerk/nextjs'
-import './globals.css'
+import type { Metadata } from "next";
+import localFont from "next/font/local";
+import "./globals.css";
+import { ThemeProvider } from "@/components/layout/theme-provider";
 
-/** Root metadata shared across all pages */
+const nbArchitekt = localFont({
+  src: [
+    {
+      path: "../../public/fonts/NBArchitekt-Regular.woff2",
+      weight: "400",
+      style: "normal",
+    },
+  ],
+  variable: "--font-nb-architekt",
+});
+
 export const metadata: Metadata = {
-  title: 'CraftaStudio — Architecture-first AI Code Generation',
-  description:
-    'Design your architecture visually, then let parallel AI agents generate every layer simultaneously.',
-  icons: { icon: '/favicon.ico' },
-}
+  title: "CraftaStudio",
+  description: "CraftaStudio production dashboard",
+};
 
-/**
- * RootLayout wraps every page with Clerk auth and global styles.
- * Dark mode is enforced at the HTML level via CSS variables in globals.css.
- */
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode
+  children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider
-      publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-    >
-      <html lang="en" className="dark" suppressHydrationWarning>
-        <body className="min-h-screen bg-[hsl(var(--color-canvas-bg))] text-[hsl(var(--color-text-primary))] antialiased">
+    <html lang="en" suppressHydrationWarning>
+      <body
+        suppressHydrationWarning
+        className={`${nbArchitekt.variable} font-sans antialiased min-h-screen flex flex-col bg-background text-foreground transition-colors duration-300`}
+      >
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem={false}
+          disableTransitionOnChange
+        >
           {children}
-        </body>
-      </html>
-    </ClerkProvider>
-  )
+        </ThemeProvider>
+      </body>
+    </html>
+  );
 }

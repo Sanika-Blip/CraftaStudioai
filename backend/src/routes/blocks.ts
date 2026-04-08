@@ -63,7 +63,7 @@ export async function blocksRoutes(app: FastifyInstance) {
       data: {
         projectId: parsed.data.projectId,
         blockType: parsed.data.blockType,
-        blockJson: parsed.data.blockJson,
+        blockJson: parsed.data.blockJson as any,
       },
     })
 
@@ -80,7 +80,7 @@ export async function blocksRoutes(app: FastifyInstance) {
 
     const block = await prisma.block.update({
       where: { id: req.params.id },
-      data: { blockJson: body.data.blockJson },
+      data: { blockJson: body.data.blockJson as any },
     })
 
     return block
