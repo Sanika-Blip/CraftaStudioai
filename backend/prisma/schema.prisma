@@ -119,3 +119,9 @@ model BlockOutput {
   @@index([blockId])
   @@map("block_outputs")
 }
+
+model User {
+  id        String   @id @default(uuid())
+  clerkId   String   @unique
+  createdAt DateTime @default(now())
+}
