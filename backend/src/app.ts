@@ -5,6 +5,7 @@ import websocket from '@fastify/websocket'
 import { blocksRoutes } from './routes/blocks'
 import { connectionsRoutes } from './routes/connections'
 import { workflowRoutes } from './routes/workflow'
+import { authRoutes } from './routes/auth'
 
 export async function buildServer() {
   const app = Fastify({
@@ -21,6 +22,7 @@ export async function buildServer() {
 
   await app.register(websocket)
 
+  await app.register(authRoutes, { prefix: '/api/auth' })
   await app.register(blocksRoutes, { prefix: '/api/blocks' })
   await app.register(connectionsRoutes, { prefix: '/api/connections' })
   await app.register(workflowRoutes, { prefix: '/api/workflow' })
@@ -28,6 +30,7 @@ export async function buildServer() {
   app.get('/health', async () => ({ status: 'ok', ts: new Date().toISOString() }))
   app.get('/', async () => {
   return { message: "Backend is running 🚀" };
+  
 });
 
   return app

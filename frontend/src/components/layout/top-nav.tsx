@@ -1,6 +1,7 @@
 "use client";
 
-import { Play, FileText, Hexagon, Sun, Moon, User, PanelRight } from "lucide-react";
+import { Play, FileText, Hexagon, Sun, Moon, PanelRight } from "lucide-react";
+import { UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
@@ -118,12 +119,7 @@ export function TopNav({
 
         <div className="h-6 w-px bg-[var(--border)] mx-1" />
 
-        <button 
-          onClick={onSettingsClick}
-          className="p-2 rounded-lg hover:bg-[var(--muted)] border border-transparent hover:border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-all"
-        >
-          <User className="size-5" />
-        </button>
+        <UserButton afterSignOutUrl="/sign-in" />
       </div>
     </header>
   );
