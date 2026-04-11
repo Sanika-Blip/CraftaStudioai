@@ -6,7 +6,7 @@ import "dotenv/config";
 import { buildServer } from "./src/app";
 import { redis } from "./src/config/redis";
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3001;
 
 async function startServer() {
   try {

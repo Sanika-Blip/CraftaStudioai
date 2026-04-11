@@ -35,7 +35,7 @@ export async function workflowRoutes(app: FastifyInstance) {
     }
 
     const run = await prisma.workflowRun.create({
-      data: { projectId, prompt, status: 'queued' },
+      data: { projectId, prompt, status: 'pending', sharedContextJson: {} },
     });
 
     await blockQueue.add('orchestrate', {
@@ -46,7 +46,7 @@ export async function workflowRoutes(app: FastifyInstance) {
 
     return reply.code(202).send({
       runId: run.id,
-      status: 'queued',
+      status: 'pending',
     });
   });
 
