@@ -8,7 +8,7 @@
 [![License MIT](https://img.shields.io/badge/License-MIT-18181b?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Stack](https://img.shields.io/badge/Stack-Next.js_|_Fastify_|_Python-18181b?style=flat-square)](https://github.com/pranavgawaii/craftastudio)
 
-*Prompt your architecture. Refine the flow.<br>Let parallel agents build every layer — simultaneously.*
+*Prompt your architecture. Refine the flow.<br>Let parallel agents build every layer — simultaneously*
 
 ---
 
@@ -105,7 +105,6 @@ We maintain a pristine, production-grade repository. Please read our **[Engineer
 - Jayesh Chaudhari
 - Sanika Patil
 - Atharva Jadhav
-
 <br>
 
 <div align="center">
