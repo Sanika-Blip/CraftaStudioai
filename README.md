@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/badge/License-MIT-475569?style=flat-square&labelColor=1e293b)](https://opensource.org/licenses/MIT)
 [![Stack](https://img.shields.io/badge/Stack-Next.js%20|%20Fastify%20|%20Python-475569?style=flat-square&labelColor=1e293b)](https://github.com/pranavgawaii/craftastudio)
 
-*Prompt your architecture. Refine the flow.<br>Let parallel agents build every layer — simultaneously.*
+*Prompt your architecture. Refine the flow.<br>Let parallel agents build every layer — simultaneously*
 
 ---
 
