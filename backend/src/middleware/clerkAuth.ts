@@ -1,23 +1,31 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { FastifyRequest, FastifyReply } from "fastify";
 
-// Lazily initialised so env vars are loaded before this runs
+// Lazy JWKS loader
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
 function getJwks() {
   if (!jwks) {
     const jwksUrl = process.env.CLERK_JWKS_URL;
+
     if (!jwksUrl) {
-      throw new Error("CLERK_JWKS_URL is not set in environment variables");
+      throw new Error("CLERK_JWKS_URL is not set");
     }
+
     jwks = createRemoteJWKSet(new URL(jwksUrl));
   }
   return jwks;
 }
 
-export async function verifyClerk(request: FastifyRequest, reply: FastifyReply) {
+export async function verifyClerk(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
   try {
     const authHeader = request.headers.authorization;
+
+    // 🔍 Debug
+    console.log("AUTH HEADER:", authHeader);
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return reply.code(401).send({ error: "No token provided" });
@@ -25,15 +33,33 @@ export async function verifyClerk(request: FastifyRequest, reply: FastifyReply) 
 
     const token = authHeader.split(" ")[1];
 
+    if (!token) {
+      return reply.code(401).send({ error: "Invalid token format" });
+    }
+
+    // ✅ DEV BYPASS — only works when NODE_ENV is not 'production'
+    if (process.env.NODE_ENV !== "production" && token === "dev-token") {
+      console.log("✅ DEV BYPASS: skipping JWT verification");
+      (request as any).user = {
+        sub: "user_3C7zRPetV4yRo9JeeaOcrVGcZep", // your real Clerk user ID
+      };
+      return;
+    }
+
+    console.log("TOKEN (first 50 chars):", token.slice(0, 50));
+
+    // ✅ IMPORTANT: minimal verification (no audience issues)
     const { payload } = await jwtVerify(token, getJwks(), {
       issuer: process.env.CLERK_ISSUER_URL,
     });
 
-    // Attach the decoded JWT payload (contains sub = clerkId) to the request
+    console.log("✅ VERIFIED USER:", payload.sub);
+
+    // Attach user to request
     (request as any).user = payload;
 
-  } catch (err) {
-    request.log?.error(err, "Clerk token verification failed");
+  } catch (err: any) {
+    console.error("❌ Clerk verification failed:", err?.message || err);
     return reply.code(401).send({ error: "Unauthorized" });
   }
 }

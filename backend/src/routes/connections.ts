@@ -9,7 +9,7 @@ const CreateConnectionSchema = z.object({
   projectId: z.string().uuid(),
   fromBlockId: z.string().uuid(),
   toBlockId: z.string().uuid(),
-  connectionType: z.enum(['dependency', 'data-flow', 'event']).default('dependency'),
+  connectionType: z.enum(['dependency', 'data_flow', 'trigger']).default('dependency'),
 })
 
 export async function connectionsRoutes(app: FastifyInstance) {

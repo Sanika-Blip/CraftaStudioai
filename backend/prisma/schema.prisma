@@ -7,12 +7,56 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ✅ ENUM (NEW)
 enum RunStatus {
   pending
   running
   done
   failed
+}
+
+enum ConflictSeverity {
+  low
+  medium
+  high
+}
+
+enum JobType {
+  frontend
+  backend
+  planner
+  merge
+}
+
+enum MemoryType {
+  architecture_decision
+  preference
+  constraint
+  event
+  pattern
+}
+
+enum Priority {
+  high
+  medium
+  low
+}
+
+enum MemorySource {
+  user
+  system
+  inferred
+}
+
+enum ConflictType {
+  syntax
+  dependency
+  logic
+}
+
+enum ConnectionType {
+  dependency
+  data_flow
+  trigger
 }
 
 // ─────────────────────────────────────────
@@ -28,7 +72,7 @@ model User {
 
   teams Team[]
 
-  @@map("User")
+  @@map("users")
 }
 
 // ─────────────────────────────────────────
@@ -53,16 +97,17 @@ model Team {
 // Project
 // ─────────────────────────────────────────
 model Project {
-  id           String        @id @default(uuid())
-  teamId       String
-  name         String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id        String   @id @default(uuid())
+  teamId    String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   team         Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
   blocks       Block[]
   connections  Connection[]
   workflowRuns WorkflowRun[]
+  memories     Memory[]
 
   @@index([teamId])
   @@map("projects")
@@ -72,20 +117,26 @@ model Project {
 // Block
 // ─────────────────────────────────────────
 model Block {
-  id                String        @id @default(uuid())
+  id                String   @id @default(uuid())
   projectId         String
   blockType         String
   blockJson         Json
-  version           String        @default("1.0.0")
+  version           String   @default("1.0.0")
   lastGeneratedHash String?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  positionX         Float    @default(0)
+  positionY         Float    @default(0)
+  uiMeta            Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  project           Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  outConnections    Connection[]  @relation("FromBlock")
-  inConnections     Connection[]  @relation("ToBlock")
-  blockOutputs      BlockOutput[]
+  project        Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  outConnections Connection[]  @relation("FromBlock")
+  inConnections  Connection[]  @relation("ToBlock")
+  blockOutputs   BlockOutput[]
+  jobRuns        JobRun[]
+  conflicts      ConflictLog[]
 
+  @@unique([projectId, blockType])
   @@index([projectId])
   @@index([blockType])
   @@map("blocks")
@@ -95,13 +146,15 @@ model Block {
 // Connection
 // ─────────────────────────────────────────
 model Connection {
-  id             String   @id @default(uuid())
+  id             String         @id @default(uuid())
   projectId      String
   fromBlockId    String
   toBlockId      String
-  connectionType String   @default("dependency")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  connectionType ConnectionType @default(dependency)
+  sourceHandle   String?
+  targetHandle   String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   fromBlock Block   @relation("FromBlock", fields: [fromBlockId], references: [id], onDelete: Cascade)
@@ -109,6 +162,7 @@ model Connection {
 
   @@unique([fromBlockId, toBlockId])
   @@index([projectId])
+  @@index([connectionType])
   @@map("connections")
 }
 
@@ -116,40 +170,159 @@ model Connection {
 // WorkflowRun
 // ─────────────────────────────────────────
 model WorkflowRun {
-  id                String     @id @default(uuid())
+  id                String    @id @default(uuid())
   projectId         String
   prompt            String
   status            RunStatus
-  version           Int        @default(1)
+  version           Int       @default(1)
   sharedContextJson Json
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  project      Project       @relation(fields: [projectId], references: [id])
-  blockOutputs BlockOutput[]
+  project       Project        @relation(fields: [projectId], references: [id])
+  blockOutputs  BlockOutput[]
+  jobRuns       JobRun[]
+  mergedOutputs MergedOutput[]
+  conflicts     ConflictLog[]
+  fileMetadata  FileMetadata[]
 
   @@index([projectId])
+  @@index([createdAt])
+  @@index([status])
 }
 
 // ─────────────────────────────────────────
 // BlockOutput
 // ─────────────────────────────────────────
 model BlockOutput {
-  id         String     @id @default(uuid())
+  id         String    @id @default(uuid())
   runId      String
   blockId    String
   blockType  String
   outputCode String
-  tokensUsed Int        @default(0)
-  status     RunStatus  @default(pending)
+  tokensUsed Int       @default(0)
+  status     RunStatus @default(pending)
   errorMsg   String?
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   run   WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   block Block       @relation(fields: [blockId], references: [id], onDelete: Cascade)
 
   @@index([runId])
   @@index([blockId])
+  @@index([createdAt])
   @@map("block_outputs")
+}
+
+model JobRun {
+  id            String    @id @default(uuid())
+  workflowRunId String
+  blockId       String? // optional (job may or may not be tied to block)
+  jobType       JobType // "frontend", "backend", "planner", etc.
+  status        RunStatus @default(pending)
+  logs          Json? // store logs or debug info
+  errorMsg      String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  retryCount    Int       @default(0)
+
+  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  block       Block?      @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@index([workflowRunId])
+  @@index([blockId])
+  @@index([createdAt])
+  @@index([status])
+  @@index([jobType])
+  @@map("job_runs")
+}
+
+model MergedOutput {
+  id            String   @id @default(uuid())
+  workflowRunId String
+  finalCode     String
+  summary       String? // short explanation of merge
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+
+  @@index([workflowRunId])
+  @@index([createdAt])
+  @@map("merged_outputs")
+}
+
+model ConflictLog {
+  id            String           @id @default(uuid())
+  workflowRunId String
+  blockId       String?
+  conflictType  ConflictType // "syntax", "dependency", etc.
+  message       String
+  severity      ConflictSeverity // "low", "medium", "high"
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  block       Block?      @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@index([workflowRunId])
+  @@index([blockId])
+  @@index([createdAt])
+  @@map("conflict_logs")
+}
+
+model FileMetadata {
+  id            String   @id @default(uuid())
+  workflowRunId String
+  fileName      String
+  fileType      String // "js", "zip", "json", etc.
+  fileSize      Int // in bytes
+  fileUrl       String? // future: R2 URL
+  storageKey    String? // future: R2 key
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+
+  @@index([workflowRunId])
+  @@index([createdAt])
+  @@map("file_metadata")
+}
+
+model Memory {
+  id        String @id @default(uuid())
+  projectId String
+
+  type  MemoryType // architecture_decision | preference | constraint | event | pattern
+  key   String
+  value Json
+
+  confidence Float         @default(0.5)
+  priority   Priority      @default(medium)
+  source     MemorySource?
+  isConflict Boolean       @default(false)
+
+  usageCount Int       @default(0)
+  lastUsedAt DateTime?
+  version    Int       @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, key])
+  @@index([projectId, type, confidence])
+  @@index([projectId])
+  @@index([type])
+  @@index([key])
+  @@index([projectId, type])
+  @@index([confidence])
+  @@index([projectId, key, version])
+  @@index([updatedAt])
+  @@index([priority])
+  @@map("memories")
 }
