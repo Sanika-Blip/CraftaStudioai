@@ -1,47 +1,34 @@
-import type { Metadata } from "next";
-import localFont from "next/font/local";
-import "./globals.css";
-import { ThemeProvider } from "@/components/layout/theme-provider";
-import { ClerkProvider } from "@clerk/nextjs";
+// CraftaStudio — src/app/layout.tsx
+import type { Metadata } from 'next'
+import { ClerkProvider } from '@clerk/nextjs'
+import './globals.css'
 
-const nbArchitekt = localFont({
-  src: [
-    {
-      path: "../../public/fonts/NBArchitekt-Regular.woff2",
-      weight: "400",
-      style: "normal",
-    },
-  ],
-  variable: "--font-nb-architekt",
-});
-
+/** Root metadata shared across all pages */
 export const metadata: Metadata = {
-  title: "CraftaStudio",
-  description: "CraftaStudio production dashboard",
-};
+  title: 'CraftaStudio — Architecture-first AI Code Generation',
+  description:
+    'Design your architecture visually, then let parallel AI agents generate every layer simultaneously.',
+  icons: { icon: '/favicon.ico' },
+}
 
+/**
+ * RootLayout wraps every page with Clerk auth and global styles.
+ * Dark mode is enforced at the HTML level via CSS variables in globals.css.
+ */
 export default function RootLayout({
   children,
-}: {
-  children: React.ReactNode;
-}) {
+}: Readonly<{
+  children: React.ReactNode
+}>) {
   return (
-    <ClerkProvider>
-      <html lang="en" suppressHydrationWarning>
-        <body
-          suppressHydrationWarning
-          className={`${nbArchitekt.variable} font-sans antialiased min-h-screen flex flex-col bg-background text-foreground transition-colors duration-300`}
-        >
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="dark"
-            enableSystem={false}
-            disableTransitionOnChange
-          >
-            {children}
-          </ThemeProvider>
+    <ClerkProvider
+      publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+    >
+      <html lang="en" className="dark" suppressHydrationWarning>
+        <body className="min-h-screen bg-[hsl(var(--color-canvas-bg))] text-[hsl(var(--color-text-primary))] antialiased">
+          {children}
         </body>
       </html>
     </ClerkProvider>
-  );
+  )
 }
