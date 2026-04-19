@@ -9,6 +9,10 @@
     "type-check": "npm run type-check --prefix frontend && npm run type-check --prefix backend"
   },
   "devDependencies": {
+    "@types/node": "^25.5.0",
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "@clerk/clerk-sdk-node": "^4.13.23"
   }
 }

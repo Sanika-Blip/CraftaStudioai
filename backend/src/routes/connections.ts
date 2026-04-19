@@ -1,82 +1,85 @@
-// CraftaStudio — src/routes/connections.ts
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import prisma from '../lib/prisma'
 import { pathExists } from '../graph/cycleDetection'
+import { verifyClerk } from "../middleware/clerkAuth";
+import { getOrCreateUser } from "../lib/getOrCreateUser";
 
-/** Zod schema for creating a connection edge */
 const CreateConnectionSchema = z.object({
-  projectId:      z.string().uuid(),
-  fromBlockId:    z.string().uuid(),
-  toBlockId:      z.string().uuid(),
+  projectId: z.string().uuid(),
+  fromBlockId: z.string().uuid(),
+  toBlockId: z.string().uuid(),
   connectionType: z.enum(['dependency', 'data-flow', 'event']).default('dependency'),
 })
 
-/**
- * Registers CRUD routes for Connection (edge) resources.
- *
- * Routes:
- *  GET    /api/connections?projectId=uuid  — list all edges for a project
- *  POST   /api/connections                 — create an edge (with cycle check)
- *  DELETE /api/connections/:id             — remove an edge
- *
- * @param app - Fastify server instance
- */
 export async function connectionsRoutes(app: FastifyInstance) {
-  /** GET /api/connections?projectId=uuid */
-  app.get<{ Querystring: { projectId: string } }>('/', async (req, reply) => {
-    const { projectId } = req.query
+
+  /** GET connections */
+  app.get('/', { preHandler: verifyClerk }, async (req: any, reply) => {
+
+    const clerkId = req.user.sub;
+    await getOrCreateUser(clerkId);
+
+    const { projectId } = req.query;
 
     if (!projectId) {
-      return reply.code(400).send({ error: 'projectId query param is required' })
+      return reply.code(400).send({ error: 'projectId required' });
     }
 
     const connections = await prisma.connection.findMany({
       where: { projectId },
       orderBy: { createdAt: 'asc' },
-    })
+    });
 
-    return connections
-  })
+    return connections;
+  });
 
-  /** POST /api/connections */
-  app.post('/', async (req, reply) => {
-    const parsed = CreateConnectionSchema.safeParse(req.body)
+  /** CREATE connection */
+  app.post('/', { preHandler: verifyClerk }, async (req: any, reply) => {
+
+    const clerkId = req.user.sub;
+    await getOrCreateUser(clerkId);
+
+    const parsed = CreateConnectionSchema.safeParse(req.body);
 
     if (!parsed.success) {
-      return reply.code(422).send({ error: parsed.error.flatten() })
+      return reply.code(422).send({ error: parsed.error.flatten() });
     }
 
-    // Cycle guard — reject the edge if it would create a circular dependency.
-    const wouldCycle = await pathExists(parsed.data.projectId, parsed.data.fromBlockId, parsed.data.toBlockId)
+    const { projectId, fromBlockId, toBlockId } = parsed.data;
+
+    const wouldCycle = await pathExists(projectId, fromBlockId, toBlockId);
+
     if (wouldCycle) {
       return reply.code(409).send({
-        error: 'Connection would create a circular dependency in the block graph',
-      })
+        error: 'Cycle detected in graph',
+      });
     }
 
     try {
       const connection = await prisma.connection.create({
-        data: {
-          projectId:      parsed.data.projectId,
-          fromBlockId:    parsed.data.fromBlockId,
-          toBlockId:      parsed.data.toBlockId,
-          connectionType: parsed.data.connectionType,
-        },
-      })
-      return reply.code(201).send(connection)
-    } catch (err: unknown) {
-      // Prisma unique constraint violation — duplicate edge
-      if (typeof err === 'object' && err !== null && 'code' in err && err.code === 'P2002') {
-        return reply.code(409).send({ error: 'Connection already exists between these blocks' })
-      }
-      throw err
-    }
-  })
+        data: parsed.data,
+      });
 
-  /** DELETE /api/connections/:id */
-  app.delete<{ Params: { id: string } }>('/:id', async (req, reply) => {
-    await prisma.connection.delete({ where: { id: req.params.id } })
-    return reply.code(204).send()
-  })
+      return reply.code(201).send(connection);
+    } catch (err: any) {
+      if (err.code === 'P2002') {
+        return reply.code(409).send({ error: 'Connection already exists' });
+      }
+      throw err;
+    }
+  });
+
+  /** DELETE connection */
+  app.delete('/:id', { preHandler: verifyClerk }, async (req: any, reply) => {
+
+    const clerkId = req.user.sub;
+    await getOrCreateUser(clerkId);
+
+    await prisma.connection.delete({
+      where: { id: req.params.id },
+    });
+
+    return reply.code(204).send();
+  });
 }
