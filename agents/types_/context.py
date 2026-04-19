@@ -1,66 +1,66 @@
-# CraftaStudio — agents/types_/context.py
-"""
-Shared Python type definitions for CraftaStudio agent service.
+from pydantic import BaseModel, Field, ConfigDict
+from typing import List, Dict, Any, Optional
 
-These mirror the TypeScript SharedContext interface defined in
-shared/types/blocks.ts — keep both in sync.
-"""
+# --- CONFIGURATION ---
+class RelaxedBase(BaseModel):
+    model_config = ConfigDict(
+        extra='allow',
+        arbitrary_types_allowed=True, 
+        validate_assignment=False 
+    )
 
-from typing import Literal
-from pydantic import BaseModel, Field
+# --- SUB-MODELS ---
+class TechStack(RelaxedBase):
+    backend: str = "Not Specified"
+    frontend: str = "Not Specified"
+    db: str = "Not Specified"
+    auth: str = "Not Specified"
 
+class Conventions(RelaxedBase):
+    casing: str = "camelCase"
+    auth: str = "Standard"
+    errors: str = "JSON"
+    responses: str = "Standard"
 
-class TechStack(BaseModel):
-    """Technology choices for this project."""
-
-    backend: str = Field(..., description="e.g. 'Fastify + TypeScript'")
-    frontend: str = Field(..., description="e.g. 'Next.js 14 + React'")
-    db: str = Field(..., description="e.g. 'PostgreSQL via Prisma'")
-    auth: str = Field(..., description="e.g. 'Clerk'")
-
-
-class Conventions(BaseModel):
-    """Coding conventions shared across all generated code."""
-
-    casing: Literal["camelCase", "snake_case"] = "camelCase"
-    auth: str = Field(..., description="e.g. 'Clerk JWT middleware'")
-    errors: str = Field(..., description="e.g. 'RFC 7807 Problem Detail'")
-    responses: str = Field(..., description="e.g. '{ data, error, meta }'")
-
-
-class EntityField(BaseModel):
-    """Schema field for a data entity."""
-
+class EntityField(RelaxedBase):
     name: str
-    type: Literal["uuid", "string", "int", "boolean", "datetime", "float"]
+    type: str = "string"
     primary: bool = False
     unique: bool = False
-    nullable: bool = False
+    nullable: bool = True
 
+class EntityDefinition(RelaxedBase):
+    fields: List[EntityField] = Field(default_factory=list)
 
-class EntityDefinition(BaseModel):
-    """Definition of a single data entity (table / Prisma model)."""
+class MemoryItem(RelaxedBase):
+    type: str  
+    key: str
+    value: Any
+    priority: str = "medium"
+    source: str = "system"
+    confidence: float = 1.0
 
-    fields: list[EntityField]
+class MemoryState(RelaxedBase):
+    deterministic: List[MemoryItem] = Field(default_factory=list)
+    observational: List[MemoryItem] = Field(default_factory=list)
+    episodic: List[MemoryItem] = Field(default_factory=list)
 
-
-class SharedContext(BaseModel):
-    """
-    Structured architectural context produced by the Planner agent.
-
-    Broadcast to all parallel generator agents so they produce
-    mutually consistent code that knows about each other's entities,
-    routes, and conventions.
-    """
-
-    project: str = Field(..., description="Human-readable project name")
-    entities: dict[str, EntityDefinition] = Field(
-        default_factory=dict,
-        description="All data entities keyed by entity name (PascalCase)",
-    )
-    api_routes: dict[str, str] = Field(
-        default_factory=dict,
-        description="API routes map: route path → description",
-    )
-    tech_stack: TechStack
-    conventions: Conventions
+# --- MAIN CONTEXT ---
+class SharedContext(RelaxedBase):
+    project: str
+    trace_id: str
+    version: int = 1
+    
+    memory: MemoryState = Field(default_factory=MemoryState)
+    tech_stack: TechStack = Field(default_factory=TechStack)
+    conventions: Conventions = Field(default_factory=Conventions)
+    entities: Dict[str, EntityDefinition] = Field(default_factory=dict)
+    api_routes: Dict[str, Any] = Field(default_factory=dict)
+    
+    generated_code: str = ""
+    status: str = "pending"
+    risk_level: str = "low"
+    loop_count: int = 0
+    agent_feedback: List[str] = Field(default_factory=list)
+    token_usage: Dict[str, int] = Field(default_factory=lambda: {"input": 0, "output": 0})
+    user_edit_request: Optional[str] = None
