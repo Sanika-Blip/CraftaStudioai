@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { blockQueue } from '../queue/blockQueue'
+import { blockGenerationQueue } from '../queue/blockQueue'
 import prisma from '../lib/prisma'
 import { verifyClerk } from "../middleware/clerkAuth";
 import { getOrCreateUser } from "../lib/getOrCreateUser";
@@ -38,7 +38,7 @@ export async function workflowRoutes(app: FastifyInstance) {
       data: { projectId, prompt, status: 'pending', sharedContextJson: {} },
     });
 
-    await blockQueue.add('orchestrate', {
+    await blockGenerationQueue.add('orchestrate', {
       runId: run.id,
       projectId,
       prompt,
