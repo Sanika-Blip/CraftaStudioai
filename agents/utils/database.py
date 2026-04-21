@@ -4,11 +4,8 @@ import psycopg2
 from psycopg2.extras import Json
 from typing import Optional
 
-# 🔥 Removed top-level import to prevent circular dependency
-# from agents.types_.context import SharedContext 
-
 def get_db_connection():
-    """Establishes a connection to the PostgreSQL database."""
+    """Establishes connection to the Durable Store (PostgreSQL)[cite: 195]."""
     return psycopg2.connect(
         host=os.getenv("DB_HOST", "localhost"),
         database=os.getenv("DB_NAME", "craftastudio"),
@@ -19,10 +16,9 @@ def get_db_connection():
 
 def update_db_and_status(run_id: str, status: str, context: Optional[any] = None):
     """
-    Finalizes AI-12 (Agent Memory) & AI-07 (Status Reporting).
-    Implements the DB-05 Schema for SharedContext persistence in PostgreSQL. 
+    Section 4.8: State Engine Persistence Strategy.
+    Implements durable audit logging for resumable workflows[cite: 180, 195]. 
     """
-    # 🔥 Local import to fix "cannot import name 'get_db_connection'"
     from agents.types_.context import SharedContext 
     
     print(f"[SYSTEM] Run {run_id} is now {status.upper()}")
@@ -33,13 +29,19 @@ def update_db_and_status(run_id: str, status: str, context: Optional[any] = None
         cur = conn.cursor()
 
         if context:
-            # DB-05: Convert SharedContext to a JSONB-compatible dictionary
+            # Convert SharedContext to a JSONB-compatible dictionary
             shared_context_data = context.model_dump()
             
-            # DB-05: Requirement for versioning column
+            # 🔥 Alignment Mapping for Backend Team
+            # Section 4.8: Explicit mapping for project isolation and observability [cite: 181, 401]
+            shared_context_data["outputCode"] = shared_context_data.get("generated_code")
+            shared_context_data["severity"] = shared_context_data.get("risk_level", "low")
+            shared_context_data["editRequest"] = shared_context_data.get("user_edit_request")
+
+            # Section 8.1: Requirement for versioning column [cite: 371]
             version = shared_context_data.get("version", 1)
 
-            # DB-05: SQL Update targeting workflow_runs table
+            # SQL Update targeting workflow_runs (Durable Audit Log) [cite: 371, 382]
             sql = """
                 UPDATE workflow_runs 
                 SET status = %s, 
@@ -49,13 +51,10 @@ def update_db_and_status(run_id: str, status: str, context: Optional[any] = None
                 WHERE projectid = %s;
             """
             
-            # psycopg2.extras.Json handles the conversion to Postgres JSONB
             cur.execute(sql, (status, Json(shared_context_data), version, run_id))
-            
-            print(f"[DATABASE] Memory Persisted (JSONB) for project: {run_id}")
+            print(f"[DATABASE] Memory Persisted (JSONB) with Mapped Fields for project: {run_id}")
         
         else:
-            # Minimal update if context isn't provided
             cur.execute(
                 'UPDATE workflow_runs SET status = %s, "updatedAt" = NOW() WHERE projectid = %s;',
                 (status, run_id)
@@ -74,14 +73,14 @@ def update_db_and_status(run_id: str, status: str, context: Optional[any] = None
 
 def load_project_context(project_id: str) -> Optional[dict]:
     """
-    AI-12: Retrieves the existing SharedContext from PostgreSQL to enable inter-turn memory. 
+    AI-12: Retrieves the existing SharedContext to enable inter-turn memory[cite: 96, 100]. 
     """
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         
-        # DB-05: Fetching the single source of truth for the workflow
+        # Section 8.2: Fetching the audit log for current project_id [cite: 382, 393]
         cur.execute(
             'SELECT "sharedContextJson" FROM workflow_runs WHERE projectid = %s;',
             (project_id,)
