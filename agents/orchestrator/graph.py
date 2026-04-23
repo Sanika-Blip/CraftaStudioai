@@ -1,65 +1,29 @@
-import os
-import sqlite3
-from dotenv import load_dotenv
-from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.sqlite import SqliteSaver 
-from agents.types_.context import SharedContext
+from agents.types_.state import OrchestratorState
 
-# 🔥 FIXED: Import the specific functions, not the modules
-from agents.nodes.planner_node import planner_node
-from agents.nodes.backend_node import backend_node
-from agents.nodes.reviewer_node import reviewer_node
-from agents.nodes.merge_node import merge_node
-from agents.nodes.refactor_node import refactor_node
-
-load_dotenv()
-
-# 1. Setup Persistent Checkpointer
-db_path = "checkpoints.sqlite"
-conn = sqlite3.connect(db_path, check_same_thread=False)
-memory = SqliteSaver(conn)
-
-# 2. Initialize Graph
-workflow = StateGraph(SharedContext)
-
-# 3. Enhanced Router Logic
-def router_logic(state: SharedContext):
-    if getattr(state, "user_edit_request", None) and state.status != "refactoring":
-        print("[ROUTER] 🛠️ Switching to Refactor mode.")
-        return "refactor"
-
-    if state.risk_level == "high" and state.loop_count < 3:
-        print(f"[ROUTER] 🔄 Quality check failed. Retrying (Loop {state.loop_count}/3)")
-        return "recode"
+class ExecutionGraphBuilder:
+    """
+    Section 4.6: Converts strategy into an executable DAG.
+    """
     
-    print("[ROUTER] ✅ Moving to Final Merge.")
-    return "finalize"
+    def build_dag(self, stages: list) -> dict:
+        """
+        Dynamically builds the DAG representation [cite: 147-157].
+        """
+        nodes = stages
+        edges = []
+        
+        # Linear dependency for simple stages [cite: 150-155]
+        for i in range(len(stages) - 1):
+            edges.append([stages[i], stages[i+1]])
+            
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "parallel_groups": [] # Independent nodes grouped for parallel execution [cite: 160]
+        }
 
-# 4. Building the Assembly Line
-# Now these variables refer to FUNCTIONS, not modules.
-workflow.add_node("planner", planner_node)
-workflow.add_node("generator", backend_node)
-workflow.add_node("reviewer", reviewer_node)
-workflow.add_node("merger", merge_node)
-workflow.add_node("refactor", refactor_node)
-
-# 5. Defining the Connections
-workflow.set_entry_point("planner")
-workflow.add_edge("planner", "generator")
-workflow.add_edge("generator", "reviewer")
-
-workflow.add_conditional_edges(
-    "reviewer",
-    router_logic,
-    {
-        "recode": "generator",
-        "refactor": "refactor",
-        "finalize": "merger"
-    }
-)
-
-workflow.add_edge("refactor", "reviewer")
-workflow.add_edge("merger", END)
-
-# 6. Compile
-app_graph = workflow.compile(checkpointer=memory)
+    def initialize_flow(self, state: OrchestratorState, stages: list):
+        """Prepares the DAG for the Flow Engine [cite: 162]"""
+        dag = self.build_dag(stages)
+        print(f"[GRAPH BUILDER] Unique DAG built for {state.mode}: {dag['nodes']}")
+        return dag
