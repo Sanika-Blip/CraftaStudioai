@@ -178,9 +178,16 @@ function CanvasTabInner({
       }
       setPayload({ blocks: newBlocks });
     } else {
-      // Real API Mode
+      // Real API Mode — if backend hasn't synced yet, still allow local demo response
       if (!projectId) {
-        console.error("No project ID available to run workflow");
+        console.warn("[CanvasTab] No projectId yet — running in local preview mode");
+        // Fallback: show a generic generated block so the UI isn't dead
+        const fallbackBlocks: CanvasBlock[] = [
+          { id: "blk-preview-" + Date.now(), type: "block", title: "AI Planning...", stack: "Connecting to backend", status: "running",
+            subBlocks: [{ id: "s-preview", type: "feat", title: msg.slice(0, 40) }]
+          }
+        ];
+        setPayload({ blocks: fallbackBlocks });
         return;
       }
       try {
@@ -305,11 +312,14 @@ function CanvasTabInner({
     }
   };
 
-  if (!mounted || (!isDemoMode && !projectId)) {
+  // Only block render until the component is hydrated on the client.
+  // We do NOT block on projectId — if the backend sync hasn't returned yet,
+  // we still show the chat UI so the user is never stuck on the loading screen.
+  if (!mounted) {
     return (
       <div className="flex-1 h-full flex flex-col items-center justify-center p-8 bg-[var(--background)]">
         <div className="w-6 h-6 rounded-full border-2 border-[var(--primary-accent)] border-t-transparent animate-spin mb-4" />
-        <p className="text-muted-foreground text-sm font-mono animate-pulse">Initializing Architect Context...</p>
+        <p className="text-muted-foreground text-sm font-mono animate-pulse">Loading workspace...</p>
       </div>
     );
   }
