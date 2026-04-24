@@ -145,7 +145,46 @@ function CanvasTabInner({
   const [projectName, setProjectName] = useState("Alpha Project Alpha");
 
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // 4. Fetch blocks from backend when projectId is available
+  useEffect(() => {
+    if (!projectId || isDemoMode) return;
+
+    const fetchBlocks = async () => {
+      try {
+        const token = await getToken();
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
+        const res = await fetch(`${apiUrl}/api/blocks?projectId=${projectId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const blocks = await res.json();
+          if (blocks.length > 0) {
+            // Map DB blocks to CanvasBlock format if necessary
+            // For now assuming the structure matches or the UI can handle it
+            setPayload({ 
+              blocks: blocks.map((b: any) => ({
+                id: b.id,
+                type: b.blockType,
+                title: b.blockJson?.title || "Untitled Block",
+                stack: b.blockJson?.stack || "Default Stack",
+                status: b.blockJson?.status || "idle",
+                subBlocks: b.blockJson?.subBlocks || []
+              }))
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch blocks:", err);
+      }
+    };
+
+    fetchBlocks();
+    // Optional: Set up polling or WS here
+  }, [projectId, isDemoMode, getToken]);
 
   /**
    * Mock AI Architect Logic
