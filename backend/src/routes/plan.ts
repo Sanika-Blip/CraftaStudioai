@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { verifyClerk } from '../middleware/clerkAuth'
-import { getOrCreateUser } from '../lib/getOrCreateUser'
+// NOTE: No DB access needed here — plan generation only calls the agent/LLM service
 
 const PlanDocSchema = z.object({
   prompt: z.string().min(5),
@@ -12,13 +12,10 @@ export async function planRoutes(app: FastifyInstance) {
 
   /**
    * POST /api/plan
-   * Authenticated proxy to the agents /api/v1/plan/doc endpoint.
-   * Calls Sarvam LLM and returns a structured architecture plan.
+   * Verifies Clerk JWT, then proxies to agents /api/v1/plan/doc.
+   * Does NOT touch the database — no getOrCreateUser call.
    */
   app.post('/', { preHandler: verifyClerk }, async (req: any, reply) => {
-
-    const clerkId = req.user.sub
-    await getOrCreateUser(clerkId)
 
     const parsed = PlanDocSchema.safeParse(req.body)
     if (!parsed.success) {
@@ -28,20 +25,23 @@ export async function planRoutes(app: FastifyInstance) {
     const agentUrl = process.env.AGENT_SERVICE_URL ?? 'http://localhost:8000'
 
     try {
+      console.log(`[plan] Calling agent at ${agentUrl}/api/v1/plan/doc with prompt: "${parsed.data.prompt.slice(0, 60)}..."`)
+
       const agentRes = await fetch(`${agentUrl}/api/v1/plan/doc`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(parsed.data),
-        signal: AbortSignal.timeout(30_000), // 30s timeout for LLM
+        signal: AbortSignal.timeout(60_000), // 60s timeout for LLM
       })
 
       if (!agentRes.ok) {
         const err = await agentRes.text()
-        console.error('[plan] Agent service error:', err)
+        console.error('[plan] Agent service error:', agentRes.status, err)
         return reply.code(agentRes.status).send({ error: 'Agent service failed', details: err })
       }
 
-      const plan = await agentRes.json()
+      const plan = await agentRes.json() as any
+      console.log(`[plan] Success — got plan: "${plan.title}" with ${plan.blocks?.length ?? 0} blocks`)
       return reply.send(plan)
 
     } catch (err: any) {
