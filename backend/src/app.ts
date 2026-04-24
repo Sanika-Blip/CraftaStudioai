@@ -32,8 +32,20 @@ export async function buildServer() {
   })
 
   // ── CORS ──
+  const allowedOrigins = [
+    process.env['FRONTEND_URL'] ?? 'http://localhost:3000',
+    'http://localhost:3000',
+    'https://craftastudio.vercel.app',
+  ].filter(Boolean);
+
   await app.register(cors, {
-    origin: process.env['FRONTEND_URL'] ?? 'http://localhost:3000',
+    origin: (origin, cb) => {
+      if (!origin || allowedOrigins.some(o => origin.startsWith(o))) {
+        cb(null, true);
+      } else {
+        cb(new Error('Not allowed by CORS'), false);
+      }
+    },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
   })
