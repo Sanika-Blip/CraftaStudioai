@@ -38,32 +38,38 @@ export default function CraftaStudio() {
       try {
         const token = await getToken();
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
-        console.log("[Dashboard] Syncing user at:", `${apiUrl}/api/auth/sync`);
+
+        // Abort if backend takes longer than 5 seconds — never block the UI
+        const controller = new AbortController();
+        const timeout = setTimeout(() => {
+          controller.abort();
+          console.warn("[Dashboard] Sync timed out — proceeding without projectId");
+        }, 5000);
+
         const res = await fetch(`${apiUrl}/api/auth/sync`, {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
         });
-        
+
+        clearTimeout(timeout);
+
         if (!res.ok) {
-          const errorText = await res.text();
-          console.error(`[Dashboard] Sync failed with status ${res.status}:`, errorText);
+          console.error(`[Dashboard] Sync failed with status ${res.status}`);
           return;
         }
 
         const user = await res.json();
-        console.log("[Dashboard] Sync success, user data:", user);
-        
         const firstProject = user?.teams?.[0]?.projects?.[0];
         if (firstProject) {
-          console.log("[Dashboard] Setting project ID:", firstProject.id);
           setProjectId(firstProject.id);
         } else {
-          console.error("[Dashboard] No project found in user data");
+          console.warn("[Dashboard] No project found — user may be new");
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.name === "AbortError") return; // timeout, silently ignore
         console.error("[Dashboard] Failed to sync user:", err);
+        // Don't block — canvas renders with null projectId (shows empty chat UI)
       }
     };
 
