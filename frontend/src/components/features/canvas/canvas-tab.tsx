@@ -198,7 +198,8 @@ function CanvasTabInner({
    */
   const handlePromptSubmit = useCallback(async (msg: string) => {
     setIsChatMoved(true);
-    if (setIsChatSidebarOpen) setIsChatSidebarOpen(true);
+    // Don't open chat sidebar — we show the PlanDocPanel instead
+    if (setIsChatSidebarOpen) setIsChatSidebarOpen(false);
 
     // Open the plan panel with loading state immediately
     setIsPlanDocOpen(true);

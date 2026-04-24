@@ -67,7 +67,7 @@ function MarkdownRenderer({ content }: { content: string }) {
 export function PlanDocPanel({ isOpen, onClose, planDoc, isLoading, onImplement, isImplementing }: PlanDocPanelProps) {
   return (
     <div className={cn(
-      "absolute top-0 right-0 h-full w-[320px] border-l border-[var(--border)] bg-[var(--surface)]/98 backdrop-blur-md z-[50] flex flex-col shadow-2xl transition-all duration-300 ease-in-out",
+      "absolute top-0 right-0 h-full w-[320px] border-l border-[var(--border)] bg-[var(--surface)]/98 backdrop-blur-md z-[60] flex flex-col shadow-2xl transition-all duration-300 ease-in-out",
       isOpen ? "translate-x-0 opacity-100 visible" : "translate-x-full opacity-0 invisible"
     )}>
       {/* Header */}
