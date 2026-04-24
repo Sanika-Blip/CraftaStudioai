@@ -66,6 +66,28 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(plan.router, prefix="/api/v1/plan", tags=["Planner"])
 app.include_router(generate.router, prefix="/api/v1/generate", tags=["Generator"])
 
+@app.post("/api/v1/orchestrate")
+async def orchestrate(req: Request):
+    """
+    Triggers the full agentic graph (Planner -> Generator -> Reviewer -> Merger).
+    """
+    body = await req.json()
+    project_id = body.get("projectId")
+    prompt = body.get("prompt")
+    run_id = body.get("runId")
+
+    # Initialize context
+    context = SharedContext(
+        project_id=project_id,
+        prompt=prompt,
+        run_id=run_id
+    )
+
+    # Run the graph
+    result = app_graph.invoke(context, config={"configurable": {"thread_id": run_id}})
+    
+    return result.model_dump()
+
 @app.get("/health", tags=["Health"])
 async def health() -> dict[str, str]:
     return {
