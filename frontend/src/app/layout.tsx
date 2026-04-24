@@ -1,34 +1,55 @@
-// CraftaStudio — src/app/layout.tsx
-import type { Metadata } from 'next'
-import { ClerkProvider } from '@clerk/nextjs'
-import './globals.css'
+import type { Metadata } from "next";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
+import "./globals.css";
+import { ThemeProvider } from "@/components/layout/theme-provider";
+import { ClerkProvider } from "@clerk/nextjs";
+import { dark } from "@clerk/themes";
 
-/** Root metadata shared across all pages */
 export const metadata: Metadata = {
-  title: 'CraftaStudio — Architecture-first AI Code Generation',
-  description:
-    'Design your architecture visually, then let parallel AI agents generate every layer simultaneously.',
-  icons: { icon: '/favicon.ico' },
-}
+  title: "CraftaStudio",
+  description: "CraftaStudio production dashboard",
+};
 
-/**
- * RootLayout wraps every page with Clerk auth and global styles.
- * Dark mode is enforced at the HTML level via CSS variables in globals.css.
- */
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <ClerkProvider
-      publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      appearance={{
+        baseTheme: dark,
+        variables: { colorPrimary: '#fd572d' },
+        elements: {
+          card: "bg-surface/50 border border-border backdrop-blur-xl",
+          headerTitle: "text-foreground font-bold",
+          headerSubtitle: "text-muted-foreground",
+          socialButtonsBlockButton: "border-border hover:bg-surface-hover/50 text-foreground",
+          dividerLine: "bg-border",
+          dividerText: "text-muted-foreground",
+          formFieldLabel: "text-foreground",
+          formFieldInput: "bg-background border-border text-foreground focus:ring-[var(--primary-accent)]",
+          footerActionText: "text-muted-foreground",
+          footerActionLink: "text-[var(--primary-accent)] hover:text-[var(--primary-accent-hover)]"
+        }
+      }}
     >
-      <html lang="en" className="dark" suppressHydrationWarning>
-        <body className="min-h-screen bg-[hsl(var(--color-canvas-bg))] text-[hsl(var(--color-text-primary))] antialiased">
-          {children}
+      <html lang="en" suppressHydrationWarning>
+        <body
+          suppressHydrationWarning
+          className={`${GeistSans.variable} ${GeistMono.variable} font-sans antialiased min-h-screen flex flex-col bg-background text-foreground transition-colors duration-300`}
+        >
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="dark"
+            enableSystem={false}
+            disableTransitionOnChange
+          >
+            {children}
+          </ThemeProvider>
         </body>
       </html>
     </ClerkProvider>
-  )
+  );
 }

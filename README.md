@@ -83,6 +83,7 @@ cd backend && npx prisma migrate dev && cd ..
 # 4. Spin up the cluster
 npm run dev
 ```
+> `npm run install:all` creates `agents/.venv` for the Python service, and `npm run dev` will reuse it automatically.
 > Services will boot simultaneously: **Frontend** `:3000` | **Backend** `:3001` | **Agents** `:8000`
 
 <br>

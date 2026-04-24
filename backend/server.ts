@@ -15,12 +15,20 @@ async function startServer() {
 
     const app = await buildServer();
 
-    await redis.set("test", "connected");
-    console.log("Redis:", await redis.get("test"));
+    try {
+      await redis.set("test", "connected");
+      console.log("Redis:", await redis.get("test"));
+    } catch (err) {
+      console.warn("⚠️ Redis test connection failed, but proceeding to start server:", err);
+    }
 
-    startBlockWorker();
+    try {
+      startBlockWorker();
+    } catch (err) {
+      console.warn("⚠️ Failed to start block worker:", err);
+    }
 
-    await app.listen({ port: PORT });
+    await app.listen({ port: PORT, host: '0.0.0.0' });
 
     console.log(`Server running on http://localhost:${PORT}`);
 

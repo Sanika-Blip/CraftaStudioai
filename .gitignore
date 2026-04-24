@@ -38,3 +38,7 @@ yarn-debug.log*
 # Testing
 coverage/
 .nyc_output/
+shared/**/*.js
+shared/**/*.js.map
+shared/**/*.d.ts
+shared/**/*.d.ts.map

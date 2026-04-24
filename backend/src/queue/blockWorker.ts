@@ -16,6 +16,12 @@ import { broadcastToProject } from '../ws/wsManager'
 
 const connection = new Redis(process.env.REDIS_URL!, {
   maxRetriesPerRequest: null,
+  tls: {},
+  family: 4,
+})
+
+connection.on('error', (err) => {
+  console.error('❌ Redis Worker Connection Error:', err.message)
 })
 
 export function startBlockWorker() {
@@ -34,6 +40,37 @@ export function startBlockWorker() {
 
       const { blockId, projectId, blockType, prompt, runId } = job.data
 
+      // Handle full orchestration (Planner + Blocks)
+      if (job.name === 'orchestrate') {
+        console.log(`[worker] Running orchestrator for run ${runId}`)
+        try {
+          const res = await fetch(`${process.env.AGENT_SERVICE_URL}/api/v1/orchestrate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, prompt, runId }),
+          })
+
+          if (!res.ok) throw new Error(`Agent service failed: ${res.statusText}`)
+          const result = await res.json()
+
+          // Broadcast that orchestration finished
+          broadcastToProject(projectId, {
+            event: 'workflow:completed',
+            runId,
+            result,
+          })
+          return
+        } catch (err: any) {
+          console.error('[worker] Orchestration failed:', err)
+          broadcastToProject(projectId, {
+            event: 'workflow:failed',
+            runId,
+            error: err.message,
+          })
+          throw err
+        }
+      }
+
       // Notify frontend: job picked up, generation starting
       broadcastToProject(projectId, {
         event: 'block:status_update',
@@ -44,7 +81,7 @@ export function startBlockWorker() {
       })
 
       try {
-        // 👉 Simulate generation (replace with AI agent call later)
+        // 👉 Call individual block generator if needed, otherwiseorchestrate handles it
         const output = `Generated output for ${blockType} block`
 
         // ✅ Save to DB
