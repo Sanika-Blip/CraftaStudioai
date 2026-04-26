@@ -144,40 +144,59 @@ function CanvasTabInner({
   const [focusedBlock, setFocusedBlock] = useState<Node | null>(null);
   const [isChatMoved, setIsChatMoved] = useState(false);
   const [projectName, setProjectName] = useState("Alpha Project Alpha");
+  // Store the raw user prompt so Implement can pass it to the workflow
+  const lastPromptRef = useRef<string>("");
 
   // WebSocket ref for live block status updates
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Live-connect to WebSocket for block updates when we have a projectId
+  // Live-connect to WebSocket for block status updates
   useEffect(() => {
     if (!projectId || isDemoMode) return;
     const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004").replace("http", "ws")}/ws?projectId=${projectId}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-    ws.onmessage = (evt) => {
-      try {
-        const msg = JSON.parse(evt.data);
-        if (msg.event === "block:status_update") {
-          const { blockId, status, output } = msg;
-          setPayload(prev => ({
-            blocks: prev.blocks.map(b =>
-              b.id === blockId ? { ...b, status, outputCode: output } : b
-            )
-          }));
-          // If all done, reset implementing state
-          setPayload(prev => {
-            const allDone = prev.blocks.every(b => b.status === "done" || b.status === "failed");
-            if (allDone) setIsImplementing(false);
-            return prev;
-          });
-        }
-        if (msg.event === "workflow:completed" || msg.event === "workflow:failed") {
-          setIsImplementing(false);
-        }
-      } catch {}
+
+    let ws: WebSocket;
+    let doneCount = 0;
+
+    const connect = () => {
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          if (msg.event === "block:status_update") {
+            const { blockId, status } = msg;
+            // Update matching block — match on DB id (UUID)
+            setPayload(prev => {
+              const updated = prev.blocks.map(b =>
+                b.id === blockId ? { ...b, status } : b
+              );
+              const allDone = updated.every(b => b.status === "done" || b.status === "failed");
+              if (allDone) {
+                setIsImplementing(false);
+              }
+              return { blocks: updated };
+            });
+          }
+          if (msg.event === "workflow:completed" || msg.event === "workflow:failed") {
+            setIsImplementing(false);
+          }
+        } catch {}
+      };
+
+      ws.onerror = () => console.warn("[WS] Connection error — will retry");
+      ws.onclose = () => {
+        // Reconnect after 2s if page is still mounted
+        setTimeout(connect, 2000);
+      };
     };
-    ws.onerror = () => console.warn("[WS] Connection error");
-    return () => { ws.close(); };
+
+    connect();
+    return () => {
+      ws?.close();
+      wsRef.current = null;
+    };
   }, [projectId, isDemoMode]);
 
   // Plan doc state — populated by Sarvam after user submits a prompt
@@ -279,8 +298,9 @@ function CanvasTabInner({
       return;
     }
 
-    // Real API mode — call Sarvam via backend
+    // Real API mode — call backend → agent
     try {
+      lastPromptRef.current = msg; // store for Implement This
       const token = await getToken();
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
       const res = await fetch(`${apiUrl}/api/plan`, {
@@ -302,7 +322,7 @@ function CanvasTabInner({
       const plan = await res.json();
       setPlanDoc(plan);
 
-      // Show plan blocks on canvas as pending preview
+      // Show blocks on canvas — use DB UUIDs returned by plan route
       if (plan.blocks?.length > 0) {
         setPayload({ blocks: plan.blocks.map((b: any) => ({ ...b, status: "idle" })) });
       }
@@ -341,44 +361,36 @@ function CanvasTabInner({
     try {
       const token = await getToken();
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
+
+      // Use the original prompt — not just the summary
+      const prompt = lastPromptRef.current || planDoc.summary || planDoc.title || "Build this project";
+
       const res = await fetch(`${apiUrl}/api/workflow/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ projectId, prompt: planDoc.summary || planDoc.title }),
+        body: JSON.stringify({ projectId, prompt }),
       });
 
       if (res.ok) {
         const data = await res.json();
         setCurrentRunId(data.runId ?? null);
-        // Set blocks to running to show animation
+        console.log(`[CanvasTab] Workflow started: runId=${data.runId}, blocks=${data.blockCount}`);
+
+        // Set ALL blocks to 'running' immediately for visual feedback
         setPayload(prev => ({ blocks: prev.blocks.map(b => ({ ...b, status: "running" })) }));
-        // Poll for completion
-        const pollInterval = setInterval(async () => {
-          const pollRes = await fetch(`${apiUrl}/api/blocks?projectId=${projectId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (pollRes.ok) {
-            const blocks = await pollRes.json();
-            if (blocks.length > 0) {
-              clearInterval(pollInterval);
-              setPayload({
-                blocks: blocks.map((b: any) => ({
-                  id: b.id, type: b.blockType,
-                  title: b.blockJson?.title || "Module",
-                  stack: b.blockJson?.stack || "",
-                  status: b.blockJson?.status || "done",
-                  subBlocks: b.blockJson?.subBlocks || [],
-                }))
-              });
-              setIsImplementing(false);
-            }
-          }
-        }, 3000);
-        // Fallback: stop polling after 2 minutes
-        setTimeout(() => { clearInterval(pollInterval); setIsImplementing(false); }, 120_000);
+
+        // WebSocket will update each block to 'done' as the worker finishes.
+        // Fallback: if WS is silent for 3 minutes, reset state.
+        const fallback = setTimeout(() => {
+          console.warn("[CanvasTab] Implement fallback timeout — resetting state");
+          setIsImplementing(false);
+        }, 180_000);
+
+        // Clean up fallback timer when all done (handled in WS effect above)
+        return () => clearTimeout(fallback);
       } else {
         const errorText = await res.text();
-        console.error("[CanvasTab] Implement API rejected request:", res.status, errorText);
+        console.error("[CanvasTab] Implement API rejected:", res.status, errorText);
         setIsImplementing(false);
       }
     } catch (err) {
