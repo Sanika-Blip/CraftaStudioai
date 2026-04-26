@@ -34,6 +34,16 @@ export async function generateRoutes(app: FastifyInstance) {
     const blocks = await prisma.block.findMany({ where: { projectId } })
     if (blocks.length === 0) return reply.code(400).send({ error: 'No blocks found in this project' })
 
+    // ── Document Approval Check ─────────────────────────────────────────────
+    const document = await prisma.projectDocument.findUnique({ where: { projectId } })
+    if (!document || document.status !== 'approved') {
+      return reply.code(400).send({
+        error: 'Document not approved',
+        message: 'Please generate and approve the project document before starting code generation',
+        hint: 'POST /api/projects/:id/document → review → POST /api/projects/:id/document/approve',
+      })
+    }
+
     // ── Step 2-7: Extract signals from prompt and store in memory ──────────
     await processAndStoreMemory(projectId, prompt, 'user')
 
@@ -55,7 +65,13 @@ export async function generateRoutes(app: FastifyInstance) {
       name: 'block-generation',
       id: run.id,
       userId: clerkId,
-      metadata: { projectId, prompt, blockCount: blocks.length, memoryKeys: Object.keys(memoryContext) },
+      metadata: {
+        projectId,
+        prompt,
+        blockCount: blocks.length,
+        memoryKeys: Object.keys(memoryContext),
+        documentVersion: document.version,
+      },
     })
 
     // ── Step 1: Call Planner Agent ──────────────────────────────────────────
@@ -72,6 +88,7 @@ export async function generateRoutes(app: FastifyInstance) {
           prompt,
           block_types: blocks.map(b => b.blockType),
           memory_context: memoryContext,
+          document_content: document.content,
         }),
         signal: AbortSignal.timeout(60_000),
       })
@@ -84,7 +101,7 @@ export async function generateRoutes(app: FastifyInstance) {
 
         await prisma.workflowRun.update({
           where: { id: run.id },
-          data: { sharedContextJson: sharedContext },
+          data: { sharedContextJson: sharedContext as any },
         })
 
         app.log.info(`[generate] SharedContext saved for runId: ${run.id}`)
@@ -105,6 +122,7 @@ export async function generateRoutes(app: FastifyInstance) {
           runId: run.id,
           traceId: trace.id,
           sharedContext,
+          documentContent: document.content,
         })
       )
     )

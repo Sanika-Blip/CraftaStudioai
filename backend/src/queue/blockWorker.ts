@@ -38,7 +38,7 @@ export function startBlockWorker() {
       console.log(`[worker] Processing job ${job.id} for block ${job.data.blockId}`)
       console.log('[worker] Job data:', job.data)
 
-      const { blockId, projectId, blockType, prompt, runId } = job.data
+      const { blockId, projectId, blockType, blockJson, prompt, runId, traceId } = job.data
 
       // Handle full orchestration (Planner + Blocks)
       if (job.name === 'orchestrate') {
@@ -81,8 +81,35 @@ export function startBlockWorker() {
       })
 
       try {
-        // 👉 Call individual block generator if needed, otherwiseorchestrate handles it
-        const output = `Generated output for ${blockType} block`
+        // ✅ Call Python agents /generate endpoint
+        console.log(`[worker] Calling agent service for block ${blockId}`)
+
+        const agentRes = await fetch(`${process.env.AGENT_SERVICE_URL}/api/v1/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            run_id: runId,
+            block_id: blockId,
+            block_type: blockType,
+            block_name: blockJson?.name ?? blockType,
+            block_json: blockJson ?? {},
+            shared_context: {
+              prompt,
+              project_id: projectId,
+              trace_id: traceId ?? null,
+            },
+          }),
+        })
+
+        if (!agentRes.ok) {
+          const errText = await agentRes.text()
+          throw new Error(`Agent service error: ${agentRes.status} — ${errText}`)
+        }
+
+        const agentData = await agentRes.json() as { output_code: string }
+        const output = agentData.output_code
+
+        console.log(`[worker] Agent returned output for block ${blockId}`)
 
         // ✅ Save to DB
         await prisma.blockOutput.create({
@@ -95,7 +122,7 @@ export function startBlockWorker() {
           },
         })
 
-        console.log('✅ BlockOutput saved')
+        console.log('✅ BlockOutput saved to DB')
 
         // ✅ Notify frontend: block done with output
         broadcastToProject(projectId, {
@@ -146,3 +173,4 @@ export function startBlockWorker() {
   console.log('[worker] Block generation worker started')
   return worker
 }
+
