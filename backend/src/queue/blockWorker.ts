@@ -84,14 +84,14 @@ export function startBlockWorker() {
         // ✅ Call Python agents /generate endpoint
         console.log(`[worker] Calling agent service for block ${blockId}`)
 
-        const agentRes = await fetch(`${process.env.AGENT_SERVICE_URL}/api/v1/generate`, {
+        const agentRes = await fetch(`${process.env.AGENT_SERVICE_URL}/api/v1/generate/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             run_id: runId,
             block_id: blockId,
             block_type: blockType,
-            block_name: blockJson?.name ?? blockType,
+            block_name: (blockJson as any)?.title ?? blockType,
             block_json: blockJson ?? {},
             shared_context: {
               prompt,

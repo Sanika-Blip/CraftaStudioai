@@ -1,87 +1,92 @@
 import os
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-
-# Internal imports from your established structure
-from agents.types_.context import SharedContext
-from agents.orchestrator.graph import app_graph
-from agents.utils.r2_storage import upload_block
+from agents.utils.gemini_client import groq_client
 
 router = APIRouter()
 
-class GenerateRequest(BaseModel):
-    """Request body for the /generate endpoint."""
-    run_id: str = Field(..., description="UUID of the WorkflowRun record")
-    block_id: str = Field(..., description="UUID of the Block being generated")
-    block_type: str = Field(..., description="Type of block (data, api, ui, etc.)")
-    block_name: str = Field(..., description="Human-readable block name")
-    block_json: dict = Field(..., description="Full block definition")
-    shared_context: SharedContext = Field(..., description="Shared architecture context")
 
-class GenerateResponse(BaseModel):
-    """Response from the /generate endpoint."""
+class SimpleGenerateRequest(BaseModel):
+    run_id: str
+    block_id: str
+    block_type: str
+    block_name: str
+    block_json: dict = Field(default_factory=dict)
+    shared_context: dict = Field(default_factory=dict)
+
+
+class SimpleGenerateResponse(BaseModel):
     run_id: str
     block_id: str
     block_type: str
     output_code: str
-    risk_level: str
-    tokens_used: int
+    risk_level: str = "low"
+    tokens_used: int = 0
 
-@router.post("/", response_model=GenerateResponse)
-async def generate(req: GenerateRequest) -> GenerateResponse:
+
+@router.post("/", response_model=SimpleGenerateResponse)
+async def generate(req: SimpleGenerateRequest) -> SimpleGenerateResponse:
     """
-    PRO ENTRY POINT:
-    Injects the specific block data into the SharedContext and
-    triggers the full LangGraph Refinement Pipeline.
+    Lightweight Groq-powered code generator.
+    Each block gets its own focused system prompt based on block_type.
     """
+    prompt = req.shared_context.get("prompt", "")
+    project_id = req.shared_context.get("project_id", "")
+    title = req.block_json.get("title", req.block_name)
+    stack = req.block_json.get("stack", "")
+    description = req.block_json.get("description", "")
+
+    system_prompt = f"""You are a senior full-stack engineer generating production-ready code for a software project.
+You MUST prefix every file with a comment: // FILE: path/to/filename.ext
+Generate complete, working code — no placeholders, no TODO comments.
+Use TypeScript unless the block type requires otherwise.
+Generate multiple files if needed, each starting with // FILE: ...
+
+Project context: {prompt}
+"""
+
+    type_instructions = {
+        "auth": "Generate authentication code: middleware, session guards, JWT utilities, and auth routes.",
+        "frontend": "Generate React/Next.js UI components, pages, and hooks. Use Tailwind CSS for styling.",
+        "backend": "Generate API routes, controllers, and service layer code using Node.js/Express or Next.js API Routes.",
+        "database": "Generate Prisma schema, migrations, and database utility functions.",
+        "api": "Generate REST API endpoints with request/response types, validation, and error handling.",
+        "ui": "Generate React components with Tailwind CSS, proper props types, and responsive design.",
+    }
+
+    block_instruction = type_instructions.get(
+        req.block_type.lower(), 
+        f"Generate production code for the {req.block_name} module."
+    )
+
+    user_message = f"""Block: {title}
+Type: {req.block_type}
+Stack: {stack}
+Description: {description}
+
+{block_instruction}
+
+Start each file with: // FILE: src/{req.block_type}/{req.block_name.lower().replace(' ', '-')}/filename.ext
+Generate complete working code now:"""
+
     try:
-        # 1. Prepare the State
-        state = req.shared_context
+        response = groq_client.generate_code(
+            system_prompt=system_prompt,
+            user_message=user_message
+        )
+        output = response["text"]
+        tokens = response.get("input_tokens", 0) + response.get("output_tokens", 0)
 
-        # Reset transient state for the new block generation
-        state.generated_code = ""
-        state.loop_count = 0
+        print(f"✅ [generate] Block {req.block_id} ({req.block_type}) → {len(output)} chars, {tokens} tokens")
 
-        # 2. TRIGGER THE AGENTIC GRAPH
-        # 🔥 FIX: We pass the 'run_id' as the thread_id for persistence.
-        # This allows the SQLite checkpointer to save the state of this specific run.
-        config = {"configurable": {"thread_id": req.run_id}}
-
-        # Use invoke to run the graph from Planner -> Generator -> Reviewer
-        final_state = app_graph.invoke(state, config=config)
-
-        # 3. Calculate total tokens from the state
-        total_tokens = final_state.token_usage.get("input", 0) + final_state.token_usage.get("output", 0)
-
-        # 4. ✅ Upload generated block output to Cloudflare R2
-        try:
-            upload_block(
-                block_id=req.block_id,
-                content={
-                    "run_id": req.run_id,
-                    "block_id": req.block_id,
-                    "block_type": req.block_type,
-                    "block_name": req.block_name,
-                    "output_code": final_state.generated_code,
-                    "risk_level": final_state.risk_level,
-                    "tokens_used": total_tokens,
-                }
-            )
-            print(f"✅ Block {req.block_id} uploaded to R2")
-        except Exception as r2_err:
-            # R2 failure is non-fatal — log it but don't crash generation
-            print(f"⚠️ R2 upload failed for block {req.block_id}: {r2_err}")
-
-        # 5. Return response
-        return GenerateResponse(
+        return SimpleGenerateResponse(
             run_id=req.run_id,
             block_id=req.block_id,
             block_type=req.block_type,
-            output_code=final_state.generated_code,
-            risk_level=final_state.risk_level,
-            tokens_used=total_tokens
+            output_code=output,
+            tokens_used=tokens
         )
 
     except Exception as e:
-        print(f"PIPELINE ERROR for block {req.block_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Agent Pipeline Failed: {str(e)}")
+        print(f"❌ [generate] Block {req.block_id} failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Code generation failed: {str(e)}")
