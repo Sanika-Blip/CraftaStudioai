@@ -116,8 +116,8 @@ export function PlanDocPanel({ isOpen, onClose, planDoc, isLoading, onImplement,
                   {planDoc.blocks.length} Modules Planned
                 </p>
                 <div className="flex flex-col gap-1.5">
-                  {planDoc.blocks.map((block) => (
-                    <div key={block.id} className="flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-[var(--muted)] transition-colors group border border-transparent hover:border-[var(--border)]">
+                  {planDoc.blocks.map((block, i) => (
+                    <div key={`${block.id}-${i}`} className="flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-[var(--muted)] transition-colors group border border-transparent hover:border-[var(--border)]">
                       <div className="mt-0.5">
                         {block.status === "done" && <CheckCircle2 className="size-3.5 text-emerald-500" />}
                         {block.status === "running" && <Loader2 className="size-3.5 text-[var(--primary-accent)] animate-spin" />}

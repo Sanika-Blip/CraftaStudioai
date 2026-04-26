@@ -93,7 +93,7 @@ async def health() -> dict[str, str]:
     return {
         "status": "online",
         "service": "CraftaStudio-Agent-Layer",
-        "engine": "Gemini-3-Flash"
+        "engine": "Groq Llama 3.3 70B"
     }
 
 if __name__ == "__main__":

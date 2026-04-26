@@ -7,6 +7,7 @@ import {
   ReactFlow,
   Background,
   Controls,
+  Panel,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -27,6 +28,7 @@ import { PremiumPlan } from "@/components/ui/premium-plan";
 import { BlockInfoPanel } from "@/components/features/canvas/block-info-panel";
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { BlockFocusOverlay } from "@/components/features/canvas/block-focus-overlay";
+import { CodeViewerModal } from "@/components/features/canvas/code-viewer-modal";
 import { EdgeHighlightProvider, useEdgeHighlight } from "@/components/features/canvas/edge-highlight-context";
 
 // Layout & Types
@@ -143,53 +145,79 @@ function CanvasTabInner({
   const [focusedBlock, setFocusedBlock] = useState<Node | null>(null);
   const [isChatMoved, setIsChatMoved] = useState(false);
   const [projectName, setProjectName] = useState("Alpha Project Alpha");
+  // Store the raw user prompt so Implement can pass it to the workflow
+  const lastPromptRef = useRef<string>("");
+
+  // WebSocket ref for live block status updates
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // Live-connect to WebSocket for block status updates
+  useEffect(() => {
+    if (!projectId || isDemoMode) return;
+    const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004").replace("http", "ws")}/ws?projectId=${projectId}`;
+
+    let ws: WebSocket;
+    let doneCount = 0;
+
+    const connect = () => {
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          if (msg.event === "block:status_update") {
+            const { blockId, status } = msg;
+            // Update matching block — match on DB id (UUID)
+            setPayload(prev => {
+              const updated = prev.blocks.map(b =>
+                b.id === blockId ? { ...b, status } : b
+              );
+              const allDone = updated.every(b => b.status === "done" || b.status === "failed");
+              if (allDone) {
+                setIsImplementing(false);
+              }
+              return { blocks: updated };
+            });
+          }
+          if (msg.event === "workflow:completed" || msg.event === "workflow:failed") {
+            setIsImplementing(false);
+          }
+        } catch {}
+      };
+
+      ws.onerror = () => console.warn("[WS] Connection error — will retry");
+      ws.onclose = () => {
+        // Reconnect after 2s if page is still mounted
+        setTimeout(connect, 2000);
+      };
+    };
+
+    connect();
+    return () => {
+      ws?.close();
+      wsRef.current = null;
+    };
+  }, [projectId, isDemoMode]);
 
   // Plan doc state — populated by Sarvam after user submits a prompt
   const [planDoc, setPlanDoc] = useState<any>(null);
   const [isPlanning, setIsPlanning] = useState(false);
   const [isImplementing, setIsImplementing] = useState(false);
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+
+  // Code viewer state
+  const [codeViewerBlock, setCodeViewerBlock] = useState<{ id: string; title: string; stack?: string } | null>(null);
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // 4. Fetch blocks from backend when projectId is available
-  useEffect(() => {
-    if (!projectId || isDemoMode) return;
+  // NOTE: We do NOT pre-load blocks from DB on mount.
+  // The prompt input is shown when payload.blocks is empty.
+  // Blocks are only set after a successful /api/plan call in this session.
 
-    const fetchBlocks = async () => {
-      try {
-        const token = await getToken();
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
-        const res = await fetch(`${apiUrl}/api/blocks?projectId=${projectId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const blocks = await res.json();
-          if (blocks.length > 0) {
-            // Map DB blocks to CanvasBlock format if necessary
-            // For now assuming the structure matches or the UI can handle it
-            setPayload({ 
-              blocks: blocks.map((b: any) => ({
-                id: b.id,
-                type: b.blockType,
-                title: b.blockJson?.title || "Untitled Block",
-                stack: b.blockJson?.stack || "Default Stack",
-                status: b.blockJson?.status || "idle",
-                subBlocks: b.blockJson?.subBlocks || []
-              }))
-            });
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch blocks:", err);
-      }
-    };
-
-    fetchBlocks();
-    // Optional: Set up polling or WS here
-  }, [projectId, isDemoMode, getToken]);
 
   /**
    * MAIN PROMPT HANDLER
@@ -239,8 +267,9 @@ function CanvasTabInner({
       return;
     }
 
-    // Real API mode — call Sarvam via backend
+    // Real API mode — call backend → agent
     try {
+      lastPromptRef.current = msg; // store for Implement This
       const token = await getToken();
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
       const res = await fetch(`${apiUrl}/api/plan`, {
@@ -249,7 +278,7 @@ function CanvasTabInner({
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ prompt: msg, project_name: projectName }),
+        body: JSON.stringify({ prompt: msg, project_name: projectName, projectId }),
       });
 
       if (!res.ok) {
@@ -262,7 +291,7 @@ function CanvasTabInner({
       const plan = await res.json();
       setPlanDoc(plan);
 
-      // Show plan blocks on canvas as pending preview
+      // Show blocks on canvas — use DB UUIDs returned by plan route
       if (plan.blocks?.length > 0) {
         setPayload({ blocks: plan.blocks.map((b: any) => ({ ...b, status: "idle" })) });
       }
@@ -301,39 +330,37 @@ function CanvasTabInner({
     try {
       const token = await getToken();
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
+
+      // Use the original prompt — not just the summary
+      const prompt = lastPromptRef.current || planDoc.summary || planDoc.title || "Build this project";
+
       const res = await fetch(`${apiUrl}/api/workflow/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ projectId, prompt: planDoc.summary || planDoc.title }),
+        body: JSON.stringify({ projectId, prompt }),
       });
 
       if (res.ok) {
-        // Set blocks to running to show animation
+        const data = await res.json();
+        setCurrentRunId(data.runId ?? null);
+        console.log(`[CanvasTab] Workflow started: runId=${data.runId}, blocks=${data.blockCount}`);
+
+        // Set ALL blocks to 'running' immediately for visual feedback
         setPayload(prev => ({ blocks: prev.blocks.map(b => ({ ...b, status: "running" })) }));
-        // Poll for completion
-        const pollInterval = setInterval(async () => {
-          const pollRes = await fetch(`${apiUrl}/api/blocks?projectId=${projectId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (pollRes.ok) {
-            const blocks = await pollRes.json();
-            if (blocks.length > 0) {
-              clearInterval(pollInterval);
-              setPayload({
-                blocks: blocks.map((b: any) => ({
-                  id: b.id, type: b.blockType,
-                  title: b.blockJson?.title || "Module",
-                  stack: b.blockJson?.stack || "",
-                  status: b.blockJson?.status || "done",
-                  subBlocks: b.blockJson?.subBlocks || [],
-                }))
-              });
-              setIsImplementing(false);
-            }
-          }
-        }, 3000);
-        // Fallback: stop polling after 2 minutes
-        setTimeout(() => { clearInterval(pollInterval); setIsImplementing(false); }, 120_000);
+
+        // WebSocket will update each block to 'done' as the worker finishes.
+        // Fallback: if WS is silent for 3 minutes, reset state.
+        const fallback = setTimeout(() => {
+          console.warn("[CanvasTab] Implement fallback timeout — resetting state");
+          setIsImplementing(false);
+        }, 180_000);
+
+        // Clean up fallback timer when all done (handled in WS effect above)
+        return () => clearTimeout(fallback);
+      } else {
+        const errorText = await res.text();
+        console.error("[CanvasTab] Implement API rejected:", res.status, errorText);
+        setIsImplementing(false);
       }
     } catch (err) {
       console.error("[CanvasTab] Implement failed:", err);
@@ -368,6 +395,7 @@ function CanvasTabInner({
           ...node.data,
           // Pass interaction handlers down to the Block components
           onInfoClick: (info: any) => setSelectedBlockInfo(info),
+          onViewCode: (block: any) => setCodeViewerBlock({ id: block.id, title: block.title, stack: block.stack }),
           onSubblockClick: (sub: any) => {
             console.log("Sub-block selected:", sub);
             setActiveTab("code");
@@ -531,6 +559,20 @@ function CanvasTabInner({
           "
           showInteractive={false}
         />
+        {/* New Plan button */}
+        <Panel position="top-right">
+          <button
+            onClick={() => {
+              setPayload({ blocks: [] });
+              setPlanDoc(null);
+              setIsPlanDocOpen(false);
+              setIsChatMoved(false);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--surface)] border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:border-[var(--primary-accent)]/40 transition-all shadow-lg"
+          >
+            ＋ New Plan
+          </button>
+        </Panel>
       </ReactFlow>
       )}
 
@@ -593,6 +635,17 @@ function CanvasTabInner({
           setFocusedBlock(null);
           setActiveTab("code");
         }}
+      />
+
+      {/* Code Viewer Modal */}
+      <CodeViewerModal
+        isOpen={!!codeViewerBlock}
+        onClose={() => setCodeViewerBlock(null)}
+        blockId={codeViewerBlock?.id ?? null}
+        blockTitle={codeViewerBlock?.title ?? ""}
+        blockStack={codeViewerBlock?.stack}
+        projectId={projectId ?? null}
+        runId={currentRunId}
       />
     </div>
   );

@@ -84,14 +84,14 @@ export function startBlockWorker() {
         // ✅ Call Python agents /generate endpoint
         console.log(`[worker] Calling agent service for block ${blockId}`)
 
-        const agentRes = await fetch(`${process.env.AGENT_SERVICE_URL}/api/v1/generate`, {
+        const agentRes = await fetch(`${process.env.AGENT_SERVICE_URL}/api/v1/generate/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             run_id: runId,
             block_id: blockId,
             block_type: blockType,
-            block_name: blockJson?.name ?? blockType,
+            block_name: (blockJson as any)?.title ?? blockType,
             block_json: blockJson ?? {},
             shared_context: {
               prompt,
@@ -106,22 +106,22 @@ export function startBlockWorker() {
           throw new Error(`Agent service error: ${agentRes.status} — ${errText}`)
         }
 
-        const agentData = await agentRes.json() as { output_code: string }
+        const agentData = await agentRes.json() as { output_code: string, tokens_used: number }
         const output = agentData.output_code
-
+        const tokensUsed = agentData.tokens_used ?? 0
         console.log(`[worker] Agent returned output for block ${blockId}`)
 
-        // ✅ Save to DB
         await prisma.blockOutput.create({
-          data: {
-            runId,
-            blockId,
-            blockType,
-            outputCode: output,
-            status: 'done',
-          },
-        })
-
+            data: {
+              runId,
+              blockId,
+              blockType,
+              outputCode: output,
+              tokensUsed: tokensUsed,  // ← added
+              status: 'done',
+            },
+          })
+                    
         console.log('✅ BlockOutput saved to DB')
 
         // ✅ Notify frontend: block done with output
