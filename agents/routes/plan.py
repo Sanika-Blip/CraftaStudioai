@@ -12,6 +12,73 @@ from agents.memory_layer import retrieve_memory
 
 router = APIRouter()
 
+# ── JSON repair helper ─────────────────────────────────────────────────────────
+def repair_json(raw: str) -> str:
+    """
+    Attempt to recover a valid JSON object from a potentially truncated LLM response.
+    Strategy:
+      1. Strip markdown fences.
+      2. Find the first '{' and try to parse everything up to the last '}'.
+      3. If that fails, balance unclosed brackets/braces and retry.
+    """
+    # Strip markdown fences
+    fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", raw)
+    text = fence_match.group(1) if fence_match else raw.strip()
+
+    # Find outermost JSON object boundaries
+    start = text.find("{")
+    if start == -1:
+        return text  # Let caller raise the parse error
+
+    # Try the clean parse first (common case)
+    end = text.rfind("}")
+    if end != -1:
+        candidate = text[start:end + 1]
+        try:
+            json.loads(candidate)
+            return candidate
+        except json.JSONDecodeError:
+            pass
+
+    # Balance truncated JSON by counting open brackets
+    segment = text[start:]
+    depth_brace = 0
+    depth_bracket = 0
+    in_string = False
+    escape = False
+
+    for i, ch in enumerate(segment):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\" and in_string:
+            escape = True
+            continue
+        if ch == '"' and not escape:
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth_brace += 1
+        elif ch == "}":
+            depth_brace -= 1
+        elif ch == "[":
+            depth_bracket += 1
+        elif ch == "]":
+            depth_bracket -= 1
+
+    # Close any unterminated string
+    if in_string:
+        segment += '"'
+
+    # Close open arrays then objects
+    segment += "]" * depth_bracket + "}" * depth_brace
+
+    return segment
+
+
+
 # ── Existing plan endpoint models ──────────────────────────────────────────────
 class PlanRequest(BaseModel):
     run_id: str
@@ -102,11 +169,18 @@ async def plan_doc(req: PlanDocRequest) -> PlanDocResponse:
         response = ai.call(system_prompt=system_prompt, user_message=user_message)
         raw_text = response["text"].strip()
 
-        # Strip markdown fences if present
-        json_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", raw_text)
-        json_str = json_match.group(1) if json_match else raw_text
+        # Use repair_json to handle truncated or fence-wrapped LLM output
+        json_str = repair_json(raw_text)
 
-        plan_data = json.loads(json_str)
+        try:
+            plan_data = json.loads(json_str)
+        except json.JSONDecodeError as inner_e:
+            print(f"[plan-doc] JSON parse error after repair: {inner_e}")
+            print(f"[plan-doc] Raw (first 800 chars): {raw_text[:800]}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"LLM returned invalid JSON: {str(inner_e)}"
+            )
 
         return PlanDocResponse(
             title=plan_data.get("title", req.project_name),
@@ -116,9 +190,8 @@ async def plan_doc(req: PlanDocRequest) -> PlanDocResponse:
             is_chat=plan_data.get("is_chat", False)
         )
 
-    except json.JSONDecodeError as e:
-        print(f"[plan-doc] JSON parse error: {e}\nRaw: {raw_text[:500]}")
-        raise HTTPException(status_code=500, detail=f"LLM returned invalid JSON: {str(e)}")
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[plan-doc] ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Plan generation failed: {str(e)}")

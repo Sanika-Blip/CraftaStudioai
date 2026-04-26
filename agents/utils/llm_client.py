@@ -56,7 +56,7 @@ class SarvamClient:
             base_url="https://api.sarvam.ai/v1"
         )
         self.model = os.getenv("SARVAM_MODEL", "sarvam-30b")
-        self.max_tokens = int(os.getenv("MAX_TOKENS", 4096))
+        self.max_tokens = int(os.getenv("MAX_TOKENS", 8192))
         self.budget_cap = int(os.getenv("BUDGET_CAP", 100000))
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
