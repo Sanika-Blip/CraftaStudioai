@@ -14,3 +14,6 @@ connection.on('error', (err) => {
 export const blockGenerationQueue = new Queue('generation-jobs', {
   connection,
 })
+
+// Alias so workflow.ts can import without renaming
+export const generationJobsQueue = blockGenerationQueue

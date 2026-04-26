@@ -119,7 +119,7 @@ export default function CraftaStudio() {
               projectId={projectId}
             />
           )}
-          {activeTab === "code" && <CodeTab />}
+          {activeTab === "code" && <CodeTab projectId={projectId} />}
           {activeTab === "preview" && <PreviewTab />}
         </main>
         <StatusBar />

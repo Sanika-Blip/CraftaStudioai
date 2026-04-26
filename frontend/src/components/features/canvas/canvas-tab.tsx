@@ -145,6 +145,41 @@ function CanvasTabInner({
   const [isChatMoved, setIsChatMoved] = useState(false);
   const [projectName, setProjectName] = useState("Alpha Project Alpha");
 
+  // WebSocket ref for live block status updates
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // Live-connect to WebSocket for block updates when we have a projectId
+  useEffect(() => {
+    if (!projectId || isDemoMode) return;
+    const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004").replace("http", "ws")}/ws?projectId=${projectId}`;
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg.event === "block:status_update") {
+          const { blockId, status, output } = msg;
+          setPayload(prev => ({
+            blocks: prev.blocks.map(b =>
+              b.id === blockId ? { ...b, status, outputCode: output } : b
+            )
+          }));
+          // If all done, reset implementing state
+          setPayload(prev => {
+            const allDone = prev.blocks.every(b => b.status === "done" || b.status === "failed");
+            if (allDone) setIsImplementing(false);
+            return prev;
+          });
+        }
+        if (msg.event === "workflow:completed" || msg.event === "workflow:failed") {
+          setIsImplementing(false);
+        }
+      } catch {}
+    };
+    ws.onerror = () => console.warn("[WS] Connection error");
+    return () => { ws.close(); };
+  }, [projectId, isDemoMode]);
+
   // Plan doc state — populated by Sarvam after user submits a prompt
   const [planDoc, setPlanDoc] = useState<any>(null);
   const [isPlanning, setIsPlanning] = useState(false);
@@ -254,7 +289,7 @@ function CanvasTabInner({
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ prompt: msg, project_name: projectName }),
+        body: JSON.stringify({ prompt: msg, project_name: projectName, projectId }),
       });
 
       if (!res.ok) {
