@@ -341,6 +341,10 @@ function CanvasTabInner({
         }, 3000);
         // Fallback: stop polling after 2 minutes
         setTimeout(() => { clearInterval(pollInterval); setIsImplementing(false); }, 120_000);
+      } else {
+        const errorText = await res.text();
+        console.error("[CanvasTab] Implement API rejected request:", res.status, errorText);
+        setIsImplementing(false);
       }
     } catch (err) {
       console.error("[CanvasTab] Implement failed:", err);
