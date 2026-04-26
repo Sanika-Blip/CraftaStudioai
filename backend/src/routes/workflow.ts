@@ -7,7 +7,7 @@ import { getOrCreateUser } from "../lib/getOrCreateUser";
 
 const RunWorkflowSchema = z.object({
   projectId: z.string().uuid(),
-  prompt: z.string().min(10),
+  prompt: z.string().min(2),
 })
 
 export async function workflowRoutes(app: FastifyInstance) {
