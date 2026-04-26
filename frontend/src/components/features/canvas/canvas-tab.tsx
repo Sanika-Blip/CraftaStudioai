@@ -7,6 +7,7 @@ import {
   ReactFlow,
   Background,
   Controls,
+  Panel,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -213,42 +214,10 @@ function CanvasTabInner({
     setMounted(true);
   }, []);
 
-  // 4. Fetch blocks from backend when projectId is available
-  useEffect(() => {
-    if (!projectId || isDemoMode) return;
+  // NOTE: We do NOT pre-load blocks from DB on mount.
+  // The prompt input is shown when payload.blocks is empty.
+  // Blocks are only set after a successful /api/plan call in this session.
 
-    const fetchBlocks = async () => {
-      try {
-        const token = await getToken();
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
-        const res = await fetch(`${apiUrl}/api/blocks?projectId=${projectId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const blocks = await res.json();
-          if (blocks.length > 0) {
-            // Map DB blocks to CanvasBlock format if necessary
-            // For now assuming the structure matches or the UI can handle it
-            setPayload({ 
-              blocks: blocks.map((b: any) => ({
-                id: b.id,
-                type: b.blockType,
-                title: b.blockJson?.title || "Untitled Block",
-                stack: b.blockJson?.stack || "Default Stack",
-                status: b.blockJson?.status || "idle",
-                subBlocks: b.blockJson?.subBlocks || []
-              }))
-            });
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch blocks:", err);
-      }
-    };
-
-    fetchBlocks();
-    // Optional: Set up polling or WS here
-  }, [projectId, isDemoMode, getToken]);
 
   /**
    * MAIN PROMPT HANDLER
@@ -590,6 +559,20 @@ function CanvasTabInner({
           "
           showInteractive={false}
         />
+        {/* New Plan button */}
+        <Panel position="top-right">
+          <button
+            onClick={() => {
+              setPayload({ blocks: [] });
+              setPlanDoc(null);
+              setIsPlanDocOpen(false);
+              setIsChatMoved(false);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--surface)] border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:border-[var(--primary-accent)]/40 transition-all shadow-lg"
+          >
+            ＋ New Plan
+          </button>
+        </Panel>
       </ReactFlow>
       )}
 
