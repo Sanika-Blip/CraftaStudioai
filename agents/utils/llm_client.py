@@ -1,20 +1,16 @@
+"""
+LLM Client — Groq-first (free, fast, 6000 req/day).
+Sarvam is kept as fallback if key is present and Groq fails.
+"""
 import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Force find the .env file in multiple possible locations
 repo_root = Path(__file__).parent.parent.parent
-env_locations = [
-    repo_root / '.env',
-    repo_root / 'agents' / '.env',
-    repo_root / 'backend' / '.env'
-]
-
-for env_path in env_locations:
+for env_path in [repo_root / 'backend' / '.env', repo_root / 'agents' / '.env', repo_root / '.env']:
     if env_path.exists():
-        load_dotenv(dotenv_path=env_path, override=True)
+        load_dotenv(dotenv_path=env_path, override=False)
 
-import anthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 try:
@@ -22,22 +18,18 @@ try:
 except ModuleNotFoundError:
     Langfuse = None
 
-# ── AI-11: FAILSAFE MONITORING INITIALIZATION ────────────────
+# ── Langfuse monitoring (optional) ───────────────────────────
 pk = os.getenv("LANGFUSE_PUBLIC_KEY", "").strip()
 sk = os.getenv("LANGFUSE_SECRET_KEY", "").strip()
 host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com").strip()
 
-# Mock Class to prevent AttributeError when keys are missing
 class MockLangfuse:
-    def trace(self, *args, **kwargs):
-        return self
-    def span(self, *args, **kwargs):
-        return self
-    def end(self, *args, **kwargs):
-        pass
+    def trace(self, *args, **kwargs): return self
+    def span(self, *args, **kwargs): return self
+    def end(self, *args, **kwargs): pass
 
 if not pk:
-    print(f"⚠️  DEBUG: Langfuse keys not found. Switching to Mock Tracing.")
+    print("⚠️  DEBUG: Langfuse keys not found. Switching to Mock Tracing.")
     langfuse = MockLangfuse()
 elif Langfuse is None:
     print("⚠️  DEBUG: Langfuse package not installed. Switching to Mock Tracing.")
@@ -46,50 +38,87 @@ else:
     print(f"✅ DEBUG: Langfuse initialized with {pk[:8]}...")
     langfuse = Langfuse(public_key=pk, secret_key=sk, host=host)
 
-import openai
 
-class SarvamClient:
+# ── Groq Client (primary — free, 6000 req/day) ───────────────
+class GroqLLMClient:
     def __init__(self):
-        self.api_key = os.getenv("SARVAM_API_KEY")
-        self.client = openai.OpenAI(
-            api_key=self.api_key or "mock-key",
-            base_url="https://api.sarvam.ai/v1"
-        )
-        self.model = os.getenv("SARVAM_MODEL", "sarvam-30b")
-        self.max_tokens = int(os.getenv("MAX_TOKENS", 4096))
-        self.budget_cap = int(os.getenv("BUDGET_CAP", 100000))
+        self._client = None
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-    def call(self, system_prompt: str, user_message: str, current_usage: int = 0):
-        if current_usage >= self.budget_cap:
-            raise Exception(f"Budget Exceeded: {current_usage}")
+    def _get_client(self):
+        if self._client:
+            return self._client
+        key = os.getenv("GROQ_API_KEY", "").strip()
+        if not key:
+            return None
+        from groq import Groq
+        self._client = Groq(api_key=key)
+        return self._client
 
-        # MOCK FALLBACK
-        if not self.api_key or self.api_key == "sk-ant-temporary-mock-key":
-            print("🛠️ [MOCK] No Sarvam Key. Generating test output...")
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=8))
+    def call(self, system_prompt: str, user_message: str, **kwargs) -> dict:
+        client = self._get_client()
+
+        if client is None:
+            print("⚠️  [Groq] No GROQ_API_KEY — using mock output")
             return {
-                "text": "// filename: test_output/app.py\nprint('Hello World')", 
-                "input_tokens": 50, 
-                "output_tokens": 150
+                "text": '{"title":"Mock Plan","summary":"No API key","markdown":"","blocks":[],"is_chat":false}',
+                "input_tokens": 0,
+                "output_tokens": 0,
             }
 
+        model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
         try:
-            response = self.client.chat.completions.create(
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                temperature=0.2,
+                max_tokens=4096,
+            )
+            text = response.choices[0].message.content or ""
+            print(f"✅ [Groq/plan] {len(text)} chars")
+            return {
+                "text": text,
+                "input_tokens": getattr(response.usage, "prompt_tokens", 0),
+                "output_tokens": getattr(response.usage, "completion_tokens", 0),
+            }
+        except Exception as e:
+            print(f"❌ [Groq/plan] Error: {e}")
+            raise
+
+
+# ── Sarvam fallback (optional, kept for compatibility) ────────
+class SarvamClient:
+    def __init__(self):
+        self.api_key = os.getenv("SARVAM_API_KEY", "").strip()
+        self.model = os.getenv("SARVAM_MODEL", "sarvam-30b")
+        self.max_tokens = int(os.getenv("MAX_TOKENS", 4096))
+
+    def call(self, system_prompt: str, user_message: str, **kwargs) -> dict:
+        if not self.api_key or self.api_key.startswith("sk-ant-"):
+            raise Exception("Sarvam API key not configured")
+        import openai
+        client = openai.OpenAI(api_key=self.api_key, base_url="https://api.sarvam.ai/v1")
+        try:
+            response = client.chat.completions.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message}
-                ]
+                    {"role": "user", "content": user_message},
+                ],
             )
             return {
-                "text": response.choices[0].message.content,
+                "text": response.choices[0].message.content or "",
                 "input_tokens": response.usage.prompt_tokens if response.usage else 0,
-                "output_tokens": response.usage.completion_tokens if response.usage else 0
+                "output_tokens": response.usage.completion_tokens if response.usage else 0,
             }
         except Exception as e:
-            print(f"LLM Client Error: {e}")
-            raise e
+            print(f"❌ [Sarvam] Error: {e}")
+            raise
 
-# Global Singleton
-ai = SarvamClient()
+
+# ── Global singleton: Groq-first ─────────────────────────────
+ai = GroqLLMClient()
