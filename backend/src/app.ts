@@ -14,6 +14,7 @@ import { wsRoutes } from './routes/ws'
 import { mergeRoutes } from './routes/merge'
 import { planRoutes } from './routes/plan'
 import { memoryRoutes } from './routes/memory'
+import { documentRoutes } from './routes/document'
 
 export async function buildServer() {
   const app = Fastify({
@@ -84,6 +85,7 @@ export async function buildServer() {
   await app.register(wsRoutes, { prefix: '/api/ws' })
   await app.register(planRoutes, { prefix: '/api/plan' })
   await app.register(memoryRoutes, { prefix: '/api/memory' })
+  await app.register(documentRoutes, { prefix: '/api/projects' })
 
   app.get('/health', async () => ({ status: 'ok', ts: new Date().toISOString() }))
   app.get('/', async () => {

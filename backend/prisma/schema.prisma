@@ -100,6 +100,7 @@ model Project {
   id        String   @id @default(uuid())
   teamId    String
   name      String
+  document ProjectDocument?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -325,4 +326,24 @@ model Memory {
   @@index([updatedAt])
   @@index([priority])
   @@map("memories")
+}
+
+model ProjectDocument {
+  id        String   @id @default(uuid())
+  projectId String   @unique
+  content   String   // Markdown content
+  status    DocumentStatus @default(pending)
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_documents")
+}
+
+enum DocumentStatus {
+  pending
+  approved
+  rejected
 }
