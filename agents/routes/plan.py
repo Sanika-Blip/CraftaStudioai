@@ -76,6 +76,7 @@ class PlanDocResponse(BaseModel):
     summary: str
     markdown: str
     blocks: List[Any]
+    is_chat: bool = False
 
 @router.post("/doc", response_model=PlanDocResponse)
 async def plan_doc(req: PlanDocRequest) -> PlanDocResponse:
@@ -112,6 +113,7 @@ async def plan_doc(req: PlanDocRequest) -> PlanDocResponse:
             summary=plan_data.get("summary", ""),
             markdown=plan_data.get("markdown", ""),
             blocks=plan_data.get("blocks", []),
+            is_chat=plan_data.get("is_chat", False)
         )
 
     except json.JSONDecodeError as e:

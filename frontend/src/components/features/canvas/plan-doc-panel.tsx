@@ -21,6 +21,7 @@ interface PlanDocPanelProps {
     summary: string;
     markdown: string;
     blocks: PlanBlock[];
+    is_chat?: boolean;
   } | null;
   isLoading?: boolean;
   onImplement?: () => void;
@@ -138,7 +139,9 @@ export function PlanDocPanel({ isOpen, onClose, planDoc, isLoading, onImplement,
             {/* Markdown content */}
             {planDoc.markdown && (
               <div className="border-t border-[var(--border)] pt-4">
-                <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--muted-foreground)] mb-3">Full Plan</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--muted-foreground)] mb-3">
+                  {planDoc.is_chat ? "Assistant Response" : "Full Plan"}
+                </p>
                 <MarkdownRenderer content={planDoc.markdown} />
               </div>
             )}
@@ -154,7 +157,7 @@ export function PlanDocPanel({ isOpen, onClose, planDoc, isLoading, onImplement,
       </div>
 
       {/* Footer — Implement button */}
-      {planDoc && !isLoading && (
+      {planDoc && !planDoc.is_chat && !isLoading && (
         <div className="p-4 border-t border-[var(--border)]">
           <button
             onClick={onImplement}
