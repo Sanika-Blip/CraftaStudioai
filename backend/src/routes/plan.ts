@@ -24,7 +24,7 @@ export async function planRoutes(app: FastifyInstance) {
       return reply.code(422).send({ error: parsed.error.flatten() })
     }
 
-    const agentUrl = process.env.AGENT_SERVICE_URL ?? 'http://localhost:8000'
+    const agentUrl = process.env.AGENT_SERVICE_URL ?? 'http://localhost:8005'
 
     try {
       console.log(`[plan] → ${agentUrl}/api/v1/plan/doc — "${parsed.data.prompt.slice(0, 60)}"`)
