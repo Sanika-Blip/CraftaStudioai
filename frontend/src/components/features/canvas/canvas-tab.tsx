@@ -27,6 +27,7 @@ import { PremiumPlan } from "@/components/ui/premium-plan";
 import { BlockInfoPanel } from "@/components/features/canvas/block-info-panel";
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { BlockFocusOverlay } from "@/components/features/canvas/block-focus-overlay";
+import { CodeViewerModal } from "@/components/features/canvas/code-viewer-modal";
 import { EdgeHighlightProvider, useEdgeHighlight } from "@/components/features/canvas/edge-highlight-context";
 
 // Layout & Types
@@ -148,6 +149,10 @@ function CanvasTabInner({
   const [planDoc, setPlanDoc] = useState<any>(null);
   const [isPlanning, setIsPlanning] = useState(false);
   const [isImplementing, setIsImplementing] = useState(false);
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+
+  // Code viewer state
+  const [codeViewerBlock, setCodeViewerBlock] = useState<{ id: string; title: string; stack?: string } | null>(null);
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -308,6 +313,8 @@ function CanvasTabInner({
       });
 
       if (res.ok) {
+        const data = await res.json();
+        setCurrentRunId(data.runId ?? null);
         // Set blocks to running to show animation
         setPayload(prev => ({ blocks: prev.blocks.map(b => ({ ...b, status: "running" })) }));
         // Poll for completion
@@ -368,6 +375,7 @@ function CanvasTabInner({
           ...node.data,
           // Pass interaction handlers down to the Block components
           onInfoClick: (info: any) => setSelectedBlockInfo(info),
+          onViewCode: (block: any) => setCodeViewerBlock({ id: block.id, title: block.title, stack: block.stack }),
           onSubblockClick: (sub: any) => {
             console.log("Sub-block selected:", sub);
             setActiveTab("code");
@@ -593,6 +601,17 @@ function CanvasTabInner({
           setFocusedBlock(null);
           setActiveTab("code");
         }}
+      />
+
+      {/* Code Viewer Modal */}
+      <CodeViewerModal
+        isOpen={!!codeViewerBlock}
+        onClose={() => setCodeViewerBlock(null)}
+        blockId={codeViewerBlock?.id ?? null}
+        blockTitle={codeViewerBlock?.title ?? ""}
+        blockStack={codeViewerBlock?.stack}
+        projectId={projectId ?? null}
+        runId={currentRunId}
       />
     </div>
   );

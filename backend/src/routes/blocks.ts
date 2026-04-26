@@ -102,6 +102,46 @@ export async function blocksRoutes(app: FastifyInstance) {
     return block;
   });
 
+  /** GET latest generated output for a block */
+  app.get("/:id/output", { preHandler: verifyClerk }, async (req: any, reply) => {
+
+    const clerkId = req.user.sub;
+    await getOrCreateUser(clerkId);
+
+    const { id: blockId } = req.params;
+    const { runId } = req.query as { runId?: string };
+
+    const where = runId ? { blockId, runId } : { blockId };
+
+    const output = await prisma.blockOutput.findFirst({
+      where,
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!output) {
+      return reply.code(404).send({ error: "No output found for this block" });
+    }
+
+    return output;
+  });
+
+  /** GET all outputs for a block (history) */
+  app.get("/:id/outputs", { preHandler: verifyClerk }, async (req: any, reply) => {
+
+    const clerkId = req.user.sub;
+    await getOrCreateUser(clerkId);
+
+    const { id: blockId } = req.params;
+
+    const outputs = await prisma.blockOutput.findMany({
+      where: { blockId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    });
+
+    return outputs;
+  });
+
   /** DELETE block */
   app.delete("/:id", { preHandler: verifyClerk }, async (req: any, reply) => {
 

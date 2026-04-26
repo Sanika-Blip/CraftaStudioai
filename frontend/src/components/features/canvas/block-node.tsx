@@ -2,7 +2,7 @@
 
 import { Handle, Position } from "@xyflow/react";
 import { motion, AnimatePresence } from "framer-motion";
-import { RefreshCw, MessageSquare, ArrowUp, Info, ChevronRight } from "lucide-react";
+import { RefreshCw, MessageSquare, ArrowUp, Info, ChevronRight, Code2 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { CanvasBlock, CanvasSubBlock } from "@/types/canvas";
@@ -11,6 +11,8 @@ interface BlockNodeProps {
   data: CanvasBlock & {
     onInfoClick?: (data: any) => void;
     onSubblockClick?: (sub: CanvasSubBlock) => void;
+    onViewCode?: (data: CanvasBlock) => void;
+    runId?: string | null;
   };
   selected?: boolean;
 }
@@ -97,10 +99,11 @@ export function BlockNode({ data, selected }: BlockNodeProps) {
           >
             <div className="flex items-center gap-1 px-1.5 py-1 rounded-xl bg-[var(--surface)] border border-[var(--border)] shadow-xl backdrop-blur-md">
               {[
-                { Icon: RefreshCw, title: "Regenerate", onClick: () => console.log("Regenerating...") },
-                { Icon: MessageSquare, title: "Chat", onClick: () => setIsChatOpen(!isChatOpen), active: isChatOpen },
-                { Icon: Info, title: "Inspector", onClick: () => data.onInfoClick?.(data) },
-              ].map(({ Icon, title, onClick, active }) => (
+                { Icon: RefreshCw, title: "Regenerate", onClick: () => console.log("Regenerating..."), show: true },
+                { Icon: MessageSquare, title: "Chat", onClick: () => setIsChatOpen(!isChatOpen), active: isChatOpen, show: true },
+                { Icon: Info, title: "Inspector", onClick: () => data.onInfoClick?.(data), show: true },
+                { Icon: Code2, title: "View Code", onClick: () => data.onViewCode?.(data), show: status === "done" },
+              ].filter(t => t.show).map(({ Icon, title, onClick, active }) => (
                 <button
                   key={title}
                   title={title}
