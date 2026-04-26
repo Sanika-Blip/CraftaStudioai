@@ -5,6 +5,7 @@ Sign up at: https://console.groq.com → API Keys → Create Key (free, no card 
 """
 
 import os
+import re
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -15,6 +16,26 @@ for p in [repo_root / "backend" / ".env", repo_root / ".env", repo_root / "agent
         load_dotenv(dotenv_path=p, override=False)
 
 from tenacity import retry, stop_after_attempt, wait_exponential
+
+
+def strip_fences(text: str) -> str:
+    """
+    Strip ALL markdown code fences from LLM output.
+    Handles both:
+      - Outer fences wrapping the whole response
+      - Per-file fences inside // FILE: blocks
+    """
+    if not text:
+        return text
+
+    # Remove every occurrence of opening and closing code fences
+    # Opening: ```language or ``` alone at the start of a line
+    text = re.sub(r"^```[a-zA-Z]*\s*$", "", text, flags=re.MULTILINE)
+    # Closing: ``` alone at the start of a line
+    text = re.sub(r"^```\s*$", "", text, flags=re.MULTILINE)
+    # Clean up excessive blank lines left by fence removal
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 class GroqClient:
@@ -64,7 +85,8 @@ class GroqClient:
                 max_tokens=8000,
             )
 
-            text = response.choices[0].message.content or ""
+            raw = response.choices[0].message.content or ""
+            text = strip_fences(raw)
             print(f"✅ [Groq] Generated {len(text)} chars | model: {model}")
 
             return {
@@ -77,6 +99,15 @@ class GroqClient:
             print(f"❌ [Groq] Error: {e}")
             raise
 
+    # Keep a call() alias so existing usages (plan route, etc.) still work
+    def call(self, system_prompt: str, user_message: str) -> dict:
+        result = self.generate_code(system_prompt, user_message)
+        return {
+            "text": result["text"],
+            "input_tokens": result["input_tokens"],
+            "output_tokens": result["output_tokens"],
+        }
 
-# Global singleton — also works as Gemini fallback
+
+# Global singleton — also aliased as gemini for backward compatibility
 groq_client = GroqClient()

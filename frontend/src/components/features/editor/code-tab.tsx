@@ -40,25 +40,53 @@ function detectLanguage(filename: string): string {
   return map[ext ?? ""] ?? "typescript";
 }
 
-// ─── Parse raw LLM output into per-file chunks ─────────────────────────────────
+// ─── Strip any residual markdown fences from a code block ───────────────────
+function stripFences(code: string): string {
+  return code
+    .replace(/^```[a-zA-Z]*\s*\n?/m, "")
+    .replace(/\n?```\s*$/m, "")
+    .trim();
+}
+
+// ─── Parse raw LLM output into per-file chunks ────────────────────────────────
 function parseOutputIntoFiles(raw: string, blockTitle: string): GeneratedFile[] {
   if (!raw) return [];
 
-  const fileRegex = /\/\/\s*FILE:\s*([^\n]+)\n([\s\S]*?)(?=\/\/\s*FILE:|$)/g;
   const files: GeneratedFile[] = [];
-  let match;
 
-  while ((match = fileRegex.exec(raw)) !== null) {
-    const name = match[1].trim();
-    const content = match[2].trim();
-    files.push({ name, content, language: detectLanguage(name), blockTitle });
+  // Pattern 1: // FILE: path/to/file.ext  (may have fences inside each block)
+  if (raw.includes("// FILE:")) {
+    const fileRegex = /\/\/ FILE:\s*([^\n]+)\n([\s\S]*?)(?=\/\/ FILE:|$)/g;
+    let match;
+    while ((match = fileRegex.exec(raw)) !== null) {
+      const name = match[1].trim();
+      const content = stripFences(match[2]);
+      if (name && content) {
+        files.push({ name, content, language: detectLanguage(name), blockTitle });
+      }
+    }
   }
 
+  // Pattern 2: The whole output IS an HTML file (no FILE: markers)
   if (files.length === 0) {
-    // If no FILE: markers, treat the whole output as one file
-    const ext = blockTitle.toLowerCase().includes("front") ? "tsx" : "ts";
-    const name = `${blockTitle.toLowerCase().replace(/\s+/g, "-")}/index.${ext}`;
-    files.push({ name, content: raw, language: detectLanguage(name), blockTitle });
+    const cleaned = stripFences(raw);
+    if (cleaned.includes("<!DOCTYPE") || cleaned.includes("<html")) {
+      files.push({
+        name: `${blockTitle.toLowerCase().replace(/\s+/g, "-")}/index.html`,
+        content: cleaned,
+        language: "html",
+        blockTitle,
+      });
+    } else {
+      // Generic fallback
+      const ext = blockTitle.toLowerCase().includes("front") || blockTitle.toLowerCase().includes("ui") ? "tsx" : "ts";
+      files.push({
+        name: `${blockTitle.toLowerCase().replace(/\s+/g, "-")}/index.${ext}`,
+        content: cleaned,
+        language: detectLanguage(`index.${ext}`),
+        blockTitle,
+      });
+    }
   }
 
   return files;
