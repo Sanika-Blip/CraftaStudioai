@@ -1,67 +1,82 @@
 """
-Gemini code generation client.
-Used for the "Implement This" pipeline — Sarvam is for planning only.
-Gemini 2.0 Flash: FREE, 1500 req/day, 128K context, excellent at code.
+Groq code generation client.
+Model: llama-3.3-70b-versatile — 100% FREE, no billing, 30K context, 6000 req/day.
+Sign up at: https://console.groq.com → API Keys → Create Key (free, no card needed)
 """
 
 import os
-import google.generativeai as genai
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load env from all known locations
+repo_root = Path(__file__).parent.parent.parent
+for p in [repo_root / "backend" / ".env", repo_root / ".env", repo_root / "agents" / ".env"]:
+    if p.exists():
+        load_dotenv(dotenv_path=p, override=False)
+
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-# Lazy init — only configure if key is present
-_gemini_ready = False
 
-def _init_gemini():
-    global _gemini_ready
-    key = os.getenv("GEMINI_API_KEY", "").strip()
-    if key and not _gemini_ready:
-        genai.configure(api_key=key)
-        _gemini_ready = True
-    return _gemini_ready
-
-
-class GeminiClient:
-    """Thin wrapper around Gemini 2.0 Flash for code generation."""
+class GroqClient:
+    """Thin wrapper around Groq for code generation — free tier, fast, great at code."""
 
     def __init__(self):
-        self.model_name = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        self._client = None
 
-    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=8))
+    def _get_client(self):
+        if self._client is not None:
+            return self._client
+        key = os.getenv("GROQ_API_KEY", "").strip()
+        if not key:
+            return None
+        from groq import Groq
+        self._client = Groq(api_key=key)
+        return self._client
+
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=6))
     def generate_code(self, system_prompt: str, user_message: str) -> dict:
-        if not _init_gemini():
-            print("⚠️ [Gemini] GEMINI_API_KEY not set — using mock output")
+        client = self._get_client()
+
+        if client is None:
+            print("⚠️ [Groq] GROQ_API_KEY not set — returning mock output")
             return {
                 "text": (
                     "// FILE: src/index.ts\n"
-                    "// ⚠️  GEMINI_API_KEY not configured.\n"
-                    "// Add GEMINI_API_KEY to your .env to enable real code generation.\n"
-                    "export const hello = () => 'world';\n"
+                    "// ⚠️  GROQ_API_KEY not configured.\n"
+                    "// Get a free key at: https://console.groq.com\n"
+                    "// Add GROQ_API_KEY=gsk_... to your backend/.env\n"
+                    "export const hello = () => 'CraftaStudio — Add your Groq API key!';\n"
                 ),
                 "input_tokens": 0,
                 "output_tokens": 0,
             }
 
+        model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
         try:
-            model = genai.GenerativeModel(
-                model_name=self.model_name,
-                system_instruction=system_prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.2,          # Low temp = deterministic, precise code
-                    max_output_tokens=8192,   # Gemini Flash supports 8K output free
-                ),
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                temperature=0.2,
+                max_tokens=8000,
             )
-            response = model.generate_content(user_message)
-            text = response.text or ""
-            # Rough token count estimate (1 token ≈ 4 chars)
+
+            text = response.choices[0].message.content or ""
+            print(f"✅ [Groq] Generated {len(text)} chars | model: {model}")
+
             return {
                 "text": text,
-                "input_tokens": len(system_prompt) // 4,
-                "output_tokens": len(text) // 4,
+                "input_tokens": getattr(response.usage, "prompt_tokens", 0),
+                "output_tokens": getattr(response.usage, "completion_tokens", 0),
             }
+
         except Exception as e:
-            print(f"[Gemini] Error: {e}")
+            print(f"❌ [Groq] Error: {e}")
             raise
 
 
-# Global singleton
-gemini = GeminiClient()
+# Global singleton — also works as Gemini fallback
+groq_client = GroqClient()

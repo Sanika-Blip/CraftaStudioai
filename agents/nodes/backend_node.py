@@ -1,5 +1,5 @@
 from agents.types_.context import SharedContext
-from agents.utils.gemini_client import gemini
+from agents.utils.gemini_client import groq_client as gemini
 from agents.utils.llm_client import langfuse
 from agents.utils.prompt_engine import build_prompt
 from agents.utils.database import update_db_and_status
