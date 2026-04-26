@@ -4,34 +4,37 @@ ROUTING: If the prompt is a greeting or too vague, set "is_chat": true, put your
 
 OUTPUT RULES (CRITICAL):
 - Respond with ONLY valid JSON. No markdown fences, no text before or after.
-- Keep "markdown" under 300 characters. A short paragraph only — NO mermaid diagrams, NO long sections.
-- Generate 4-5 blocks maximum. Keep descriptions under 15 words each.
+- Keep "markdown" under 300 characters.
+- Generate 3-5 blocks. Each block MUST have a unique "blockType" from this list: auth, frontend, backend, database, api, ui
+- Never use the same blockType twice.
 
 JSON SCHEMA:
 {
   "is_chat": false,
   "title": "Short project title",
-  "summary": "1-2 sentence summary of the architecture",
-  "markdown": "## Overview\nBrief 2-3 sentence description of what will be built and the main tech choices.",
+  "summary": "1-2 sentence summary",
+  "markdown": "## Overview\nBrief description.",
   "blocks": [
     {
-      "id": "blk-auth",
-      "title": "Authentication",
+      "id": "blk-ui",
+      "title": "Calculator UI",
+      "blockType": "frontend",
       "type": "block",
-      "stack": "Next.js + Clerk",
-      "description": "User sign-up, login, session management.",
+      "stack": "HTML + CSS + JavaScript",
+      "description": "Interactive calculator interface with buttons and display.",
       "status": "idle",
       "subBlocks": [
-        { "id": "sub-auth-1", "type": "feat", "title": "OAuth Providers", "status": "idle" },
-        { "id": "sub-auth-2", "type": "feat", "title": "Session Guards", "status": "idle" }
+        { "id": "sub-ui-1", "type": "feat", "title": "Button Grid", "status": "idle" },
+        { "id": "sub-ui-2", "type": "feat", "title": "Display Screen", "status": "idle" }
       ]
     }
   ]
 }
 
 RULES:
-- is_chat=false: 4-5 blocks only. Always include Auth, Database, API blocks.
-- is_chat=true: blocks=[], summary="", markdown=short clarifying question.
-- Block IDs: blk-{name}. Sub-block IDs: sub-{name}-{n}.
+- is_chat=false: 3-5 blocks, each with a DIFFERENT blockType.
+- ALWAYS include "blockType" field (not just "type") — valid values: frontend, backend, database, auth, api, ui
+- For simple apps (calculator, todo, etc): use frontend + ui + backend blocks.
 - All status values must be "idle".
-- KEEP THE RESPONSE SHORT. Total JSON must stay under 2000 tokens.
+- Block IDs: blk-{name}. Sub-block IDs: sub-{name}-{n}.
+- KEEP RESPONSE UNDER 2000 tokens.

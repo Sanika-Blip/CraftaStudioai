@@ -2,7 +2,6 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { verifyClerk } from '../middleware/clerkAuth'
 import prisma from '../lib/prisma'
-import { BLOCK_TYPES } from '../../../shared/types/blocks'
 
 const PlanDocSchema = z.object({
   prompt: z.string().min(2),
@@ -10,26 +9,14 @@ const PlanDocSchema = z.object({
   projectId: z.string().uuid().optional(),
 })
 
-// Normalise any block type string the LLM returns to one we support
-const VALID_TYPES = new Set(BLOCK_TYPES)
-function normaliseType(raw: string): string {
-  const lower = (raw ?? '').toLowerCase().replace(/[^a-z]/g, '_')
-  if (VALID_TYPES.has(lower as any)) return lower
-  if (lower.includes('front') || lower.includes('ui')) return 'frontend'
-  if (lower.includes('back') || lower.includes('api')) return 'backend'
-  if (lower.includes('auth')) return 'auth'
-  if (lower.includes('db') || lower.includes('data')) return 'database'
-  return 'backend' // safe fallback
+// Convert a block title to a slug used as blockType in DB
+// e.g. "Calculator UI" → "calculator-ui"
+function slugifyTitle(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'block'
 }
 
 export async function planRoutes(app: FastifyInstance) {
 
-  /**
-   * POST /api/plan
-   * 1. Calls the agent to generate a plan.
-   * 2. Saves plan blocks to DB (upsert by type) so Implement This has blockIds.
-   * 3. Returns plan + saved block IDs to the frontend.
-   */
   app.post('/', { preHandler: verifyClerk }, async (req: any, reply) => {
 
     const parsed = PlanDocSchema.safeParse(req.body)
@@ -37,11 +24,10 @@ export async function planRoutes(app: FastifyInstance) {
       return reply.code(422).send({ error: parsed.error.flatten() })
     }
 
-    // Resolve at request time so .env changes are always picked up
     const agentUrl = process.env.AGENT_SERVICE_URL ?? 'http://localhost:8000'
 
     try {
-      console.log(`[plan] Calling agent at ${agentUrl}/api/v1/plan/doc`)
+      console.log(`[plan] → ${agentUrl}/api/v1/plan/doc — "${parsed.data.prompt.slice(0, 60)}"`)
 
       const agentRes = await fetch(`${agentUrl}/api/v1/plan/doc`, {
         method: 'POST',
@@ -57,37 +43,41 @@ export async function planRoutes(app: FastifyInstance) {
       }
 
       const plan = await agentRes.json() as any
-      console.log(`[plan] Got plan "${plan.title}" with ${plan.blocks?.length ?? 0} blocks`)
+      console.log(`[plan] Got "${plan.title}" with ${plan.blocks?.length ?? 0} blocks`)
 
-      // ── Persist blocks to DB so Implement has real blockIds ────────────────
+      // ── Persist each block with a title-slug as blockType ─────────────────
       let savedBlocks: Array<{ dbId: string; blockType: string; idx: number }> = []
       const projectId = parsed.data.projectId ?? null
 
       if (projectId && plan.blocks?.length > 0) {
         const project = await prisma.project.findUnique({ where: { id: projectId } })
         if (project) {
+          // Delete old blocks for this project so we always get fresh ones
+          await prisma.block.deleteMany({ where: { projectId } })
+
           for (let i = 0; i < plan.blocks.length; i++) {
             const block = plan.blocks[i]
-            const blockType = normaliseType(block.type ?? block.blockType ?? 'backend')
+            // Use blockType from LLM if provided, otherwise slug the title
+            const blockType = slugifyTitle(block.blockType ?? block.title ?? `block-${i}`)
             const blockJson = {
               title: block.title ?? blockType,
               stack: block.stack ?? '',
               description: block.description ?? '',
               status: 'idle',
               subBlocks: block.subBlocks ?? [],
+              originalType: block.type ?? 'block',
             }
             try {
-              const saved = await prisma.block.upsert({
-                where: { projectId_blockType: { projectId, blockType } },
-                create: { projectId, blockType, blockJson },
-                update: { blockJson },
+              const saved = await prisma.block.create({
+                data: { projectId, blockType, blockJson },
               })
               savedBlocks.push({ dbId: saved.id, blockType, idx: i })
+              console.log(`[plan] Saved block: ${blockType} (${saved.id})`)
             } catch (e: any) {
               console.warn(`[plan] Block save failed (${blockType}):`, e.message)
             }
           }
-          console.log(`[plan] Persisted ${savedBlocks.length} blocks to DB`)
+          console.log(`[plan] ✅ ${savedBlocks.length}/${plan.blocks.length} blocks saved`)
         }
       }
 
@@ -97,14 +87,14 @@ export async function planRoutes(app: FastifyInstance) {
         return {
           ...b,
           id: saved?.dbId ?? b.id,
-          blockType: saved?.blockType ?? normaliseType(b.type ?? 'backend'),
+          blockType: saved?.blockType ?? slugifyTitle(b.blockType ?? b.title ?? `block-${i}`),
         }
       })
 
       return reply.send({ ...plan, blocks: enrichedBlocks, projectId })
 
     } catch (err: any) {
-      console.error('[plan] Failed to reach agent:', err.message)
+      console.error('[plan] Agent unreachable:', err.message)
       return reply.code(503).send({ error: 'Agent service unavailable', message: err.message })
     }
   })
