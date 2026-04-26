@@ -72,32 +72,43 @@ class GroqClient:
                 "output_tokens": 0,
             }
 
-        model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+        # Strategy: Try 70B, fallback to 8B
+        models_to_try = [
+            os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            "llama-3.1-8b-instant"
+        ]
 
-        try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message},
-                ],
-                temperature=0.2,
-                max_tokens=8000,
-            )
+        for model in models_to_try:
+            try:
+                print(f"[Groq] Generating code with model {model}...")
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ],
+                    temperature=0.2,
+                    max_tokens=8000,
+                )
 
-            raw = response.choices[0].message.content or ""
-            text = strip_fences(raw)
-            print(f"✅ [Groq] Generated {len(text)} chars | model: {model}")
+                raw = response.choices[0].message.content or ""
+                text = strip_fences(raw)
+                print(f"✅ [Groq] Generated {len(text)} chars | model: {model}")
 
-            return {
-                "text": text,
-                "input_tokens": getattr(response.usage, "prompt_tokens", 0),
-                "output_tokens": getattr(response.usage, "completion_tokens", 0),
-            }
+                return {
+                    "text": text,
+                    "input_tokens": getattr(response.usage, "prompt_tokens", 0),
+                    "output_tokens": getattr(response.usage, "completion_tokens", 0),
+                }
 
-        except Exception as e:
-            print(f"❌ [Groq] Error: {e}")
-            raise
+            except Exception as e:
+                err_msg = str(e).lower()
+                print(f"⚠️ [Groq] {model} failed: {e}")
+                if "rate limit" not in err_msg and "429" not in err_msg:
+                    raise  # If it's not a rate limit, don't try other models
+
+        print("❌ [Groq] Rate limit hit on all models. Generation failed.")
+        raise Exception("Groq rate limit exceeded on all available models.")
 
     # Keep a call() alias so existing usages (plan route, etc.) still work
     def call(self, system_prompt: str, user_message: str) -> dict:
