@@ -106,22 +106,22 @@ export function startBlockWorker() {
           throw new Error(`Agent service error: ${agentRes.status} — ${errText}`)
         }
 
-        const agentData = await agentRes.json() as { output_code: string }
+        const agentData = await agentRes.json() as { output_code: string, tokens_used: number }
         const output = agentData.output_code
-
+        const tokensUsed = agentData.tokens_used ?? 0
         console.log(`[worker] Agent returned output for block ${blockId}`)
 
-        // ✅ Save to DB
         await prisma.blockOutput.create({
-          data: {
-            runId,
-            blockId,
-            blockType,
-            outputCode: output,
-            status: 'done',
-          },
-        })
-
+            data: {
+              runId,
+              blockId,
+              blockType,
+              outputCode: output,
+              tokensUsed: tokensUsed,  // ← added
+              status: 'done',
+            },
+          })
+                    
         console.log('✅ BlockOutput saved to DB')
 
         // ✅ Notify frontend: block done with output

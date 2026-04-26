@@ -59,6 +59,17 @@ enum ConnectionType {
   trigger
 }
 
+enum TeamRole {
+  owner
+  admin
+  member
+}
+enum DocumentStatus {
+  pending
+  approved
+  rejected
+}
+
 // ─────────────────────────────────────────
 // User
 // ─────────────────────────────────────────
@@ -70,7 +81,10 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  teams Team[]
+  teamMemberships TeamMember[]
+  workflowRuns    WorkflowRun[]  // runs initiated by this user
+  jobRuns         JobRun[]       // jobs initiated by this user
+  conflictLogs    ConflictLog[]  // conflicts attributed to this user
 
   @@map("users")
 }
@@ -84,13 +98,30 @@ model Team {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  members  TeamMember[]
   projects Project[]
 
-  @@index([userId])
   @@map("teams")
+}
+
+// ─────────────────────────────────────────
+// TeamMember  (join table — multi-user teams)
+// ─────────────────────────────────────────
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String
+  userId    String
+  role      TeamRole @default(member)
+  joinedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+  @@map("team_members")
 }
 
 // ─────────────────────────────────────────
@@ -100,7 +131,7 @@ model Project {
   id        String   @id @default(uuid())
   teamId    String
   name      String
-  document ProjectDocument?
+  document  ProjectDocument?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -168,11 +199,12 @@ model Connection {
 }
 
 // ─────────────────────────────────────────
-// WorkflowRun
+// WorkflowRun  — now tracks which user triggered it
 // ─────────────────────────────────────────
 model WorkflowRun {
   id                String    @id @default(uuid())
   projectId         String
+  triggeredByUserId String    // ← who initiated this run
   prompt            String
   status            RunStatus
   version           Int       @default(1)
@@ -181,6 +213,7 @@ model WorkflowRun {
   updatedAt         DateTime  @updatedAt
 
   project       Project        @relation(fields: [projectId], references: [id])
+  triggeredBy   User           @relation(fields: [triggeredByUserId], references: [id])
   blockOutputs  BlockOutput[]
   jobRuns       JobRun[]
   mergedOutputs MergedOutput[]
@@ -188,8 +221,11 @@ model WorkflowRun {
   fileMetadata  FileMetadata[]
 
   @@index([projectId])
+  @@index([triggeredByUserId])          // ← query all runs by a user
+  @@index([triggeredByUserId, projectId]) // ← query runs by user + project
   @@index([createdAt])
   @@index([status])
+  @@map("workflow_runs")
 }
 
 // ─────────────────────────────────────────
@@ -216,36 +252,45 @@ model BlockOutput {
   @@map("block_outputs")
 }
 
+// ─────────────────────────────────────────
+// JobRun  — now tracks which user triggered it
+// ─────────────────────────────────────────
 model JobRun {
-  id            String    @id @default(uuid())
-  workflowRunId String
-  blockId       String? // optional (job may or may not be tied to block)
-  jobType       JobType // "frontend", "backend", "planner", etc.
-  status        RunStatus @default(pending)
-  logs          Json? // store logs or debug info
-  errorMsg      String?
-  startedAt     DateTime?
-  completedAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  retryCount    Int       @default(0)
+  id              String    @id @default(uuid())
+  workflowRunId   String
+  blockId         String?
+  triggeredByUserId String? // ← who triggered this specific job
+  jobType         JobType
+  status          RunStatus @default(pending)
+  logs            Json?
+  errorMsg        String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  retryCount      Int       @default(0)
 
   workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
   block       Block?      @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  triggeredBy User?       @relation(fields: [triggeredByUserId], references: [id])
 
   @@index([workflowRunId])
   @@index([blockId])
+  @@index([triggeredByUserId])          // ← query all jobs by a user
   @@index([createdAt])
   @@index([status])
   @@index([jobType])
   @@map("job_runs")
 }
 
+// ─────────────────────────────────────────
+// MergedOutput
+// ─────────────────────────────────────────
 model MergedOutput {
   id            String   @id @default(uuid())
   workflowRunId String
   finalCode     String
-  summary       String? // short explanation of merge
+  summary       String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -256,33 +301,42 @@ model MergedOutput {
   @@map("merged_outputs")
 }
 
+// ─────────────────────────────────────────
+// ConflictLog  — now tracks which user it belongs to
+// ─────────────────────────────────────────
 model ConflictLog {
-  id            String           @id @default(uuid())
-  workflowRunId String
-  blockId       String?
-  conflictType  ConflictType // "syntax", "dependency", etc.
-  message       String
-  severity      ConflictSeverity // "low", "medium", "high"
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  id                String           @id @default(uuid())
+  workflowRunId     String
+  blockId           String?
+  attributedUserId  String?          // ← which user's action caused this conflict
+  conflictType      ConflictType
+  message           String
+  severity          ConflictSeverity
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
-  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
-  block       Block?      @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  workflowRun   WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  block         Block?      @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  attributedTo  User?       @relation(fields: [attributedUserId], references: [id])
 
   @@index([workflowRunId])
   @@index([blockId])
+  @@index([attributedUserId])           // ← query conflicts by user
   @@index([createdAt])
   @@map("conflict_logs")
 }
 
+// ─────────────────────────────────────────
+// FileMetadata
+// ─────────────────────────────────────────
 model FileMetadata {
   id            String   @id @default(uuid())
   workflowRunId String
   fileName      String
-  fileType      String // "js", "zip", "json", etc.
-  fileSize      Int // in bytes
-  fileUrl       String? // future: R2 URL
-  storageKey    String? // future: R2 key
+  fileType      String
+  fileSize      Int
+  fileUrl       String?
+  storageKey    String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -293,11 +347,14 @@ model FileMetadata {
   @@map("file_metadata")
 }
 
+// ─────────────────────────────────────────
+// Memory
+// ─────────────────────────────────────────
 model Memory {
   id        String @id @default(uuid())
   projectId String
 
-  type  MemoryType // architecture_decision | preference | constraint | event | pattern
+  type  MemoryType
   key   String
   value Json
 
@@ -328,22 +385,21 @@ model Memory {
   @@map("memories")
 }
 
+// ─────────────────────────────────────────
+// ProjectDocument
+// ─────────────────────────────────────────
 model ProjectDocument {
-  id        String   @id @default(uuid())
-  projectId String   @unique
-  content   String   // Markdown content
+  id        String         @id @default(uuid())
+  projectId String         @unique
+  content   String
   status    DocumentStatus @default(pending)
-  version   Int      @default(1)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  version   Int            @default(1)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("project_documents")
 }
 
-enum DocumentStatus {
-  pending
-  approved
-  rejected
-}
+
