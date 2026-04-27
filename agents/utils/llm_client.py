@@ -32,10 +32,10 @@ if not pk:
     print("⚠️  DEBUG: Langfuse keys not found. Switching to Mock Tracing.")
     langfuse = MockLangfuse()
 elif Langfuse is None:
-    print("⚠️  DEBUG: Langfuse package not installed. Switching to Mock Tracing.")
+    print("DEBUG: Langfuse package not installed. Switching to Mock Tracing.")
     langfuse = MockLangfuse()
 else:
-    print(f"✅ DEBUG: Langfuse initialized with {pk[:8]}...")
+    print(f"DEBUG: Langfuse initialized with {pk[:8]}...")
     langfuse = Langfuse(public_key=pk, secret_key=sk, host=host)
 
 

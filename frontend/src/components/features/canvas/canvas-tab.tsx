@@ -4,34 +4,23 @@ import { useMemo, useEffect, useState, useCallback, useRef } from "react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import {
-  ReactFlow,
-  Background,
-  Controls,
-  Panel,
-  useNodesState,
-  useEdgesState,
-  useReactFlow,
-  ReactFlowProvider,
-  Node,
-  Edge,
+  ReactFlow, Background, Controls,
+  useNodesState, useEdgesState, useReactFlow,
+  ReactFlowProvider, Node, Edge,
 } from "@xyflow/react";
 import { useUser, useAuth } from "@clerk/nextjs";
 import "@xyflow/react/dist/style.css";
 
-// System Components
 import { PlannerNode } from "@/components/features/canvas/planner-node";
 import { BlockNode } from "@/components/features/canvas/block-node";
 import { UnknownBlockNode } from "@/components/features/canvas/unknown-block";
 import { FlowingEdge } from "@/components/features/canvas/flowing-edge";
 import { PlanDocPanel } from "@/components/features/canvas/plan-doc-panel";
-import { PremiumPlan } from "@/components/ui/premium-plan";
 import { BlockInfoPanel } from "@/components/features/canvas/block-info-panel";
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { BlockFocusOverlay } from "@/components/features/canvas/block-focus-overlay";
 import { CodeViewerModal } from "@/components/features/canvas/code-viewer-modal";
 import { EdgeHighlightProvider, useEdgeHighlight } from "@/components/features/canvas/edge-highlight-context";
-
-// Layout & Types
 import { calculateCircularLayout } from "@/utils/layout";
 import { CanvasJSONPayload, CanvasBlock } from "@/types/canvas";
 
@@ -45,253 +34,145 @@ interface CanvasTabProps {
   isChatSidebarOpen?: boolean;
   setIsChatSidebarOpen?: (open: boolean) => void;
   projectId?: string | null;
+  onGenerationComplete?: () => void; // ✅ new prop
 }
 
-/**
- * Example JSON Payload from Planner Engine
- */
 const MOCK_PAYLOAD: CanvasJSONPayload = {
   blocks: [
-    {
-      id: "blk-auth",
-      type: "block",
-      title: "Authentication Module",
-      stack: "Next.js + Clerk",
-      status: "done",
-      subBlocks: [
-        { id: "sub-auth-1", type: "auth", title: "User Login Flow", status: "done" },
-        { id: "sub-auth-2", type: "auth", title: "Session Guard", status: "done" }
-      ]
-    },
-    {
-      id: "blk-db",
-      type: "block",
-      title: "Data Persistence",
-      stack: "PostgreSQL + Prisma",
-      status: "running",
-      subBlocks: [
-        { id: "sub-db-1", type: "db", title: "Prisma Schema Creation", status: "running" },
-        { id: "sub-db-2", type: "db", title: "Migration Pipeline", status: "idle" }
-      ]
-    },
-    {
-      id: "blk-ui",
-      type: "block",
-      title: "Frontend Dashboard",
-      stack: "React + Tailwind",
-      status: "idle",
-      subBlocks: [
-        { id: "sub-ui-1", type: "ui", title: "Shell Layout", status: "idle" },
-        { id: "sub-ui-2", type: "ui", title: "Navigation Sidebar", status: "idle" }
-      ]
-    },
-    {
-      id: "blk-api",
-      type: "block",
-      title: "Inventory API",
-      stack: "Node.js + tRPC",
-      status: "idle",
-      subBlocks: [
-        { id: "sub-api-1", type: "api", title: "Product Endpoints", status: "idle" }
-      ]
-    },
-    {
-      id: "blk-legacy",
-      type: "legacy-system", // Testing unknown type fallback
-      title: "Legacy Gateway",
-      status: "idle"
-    }
+    { id: "blk-auth", type: "block", title: "Authentication Module", stack: "Next.js + Clerk", status: "done", subBlocks: [{ id: "sub-auth-1", type: "auth", title: "User Login Flow", status: "done" }, { id: "sub-auth-2", type: "auth", title: "Session Guard", status: "done" }] },
+    { id: "blk-db", type: "block", title: "Data Persistence", stack: "PostgreSQL + Prisma", status: "running", subBlocks: [{ id: "sub-db-1", type: "db", title: "Prisma Schema Creation", status: "running" }, { id: "sub-db-2", type: "db", title: "Migration Pipeline", status: "idle" }] },
+    { id: "blk-ui", type: "block", title: "Frontend Dashboard", stack: "React + Tailwind", status: "idle", subBlocks: [{ id: "sub-ui-1", type: "ui", title: "Shell Layout", status: "idle" }, { id: "sub-ui-2", type: "ui", title: "Navigation Sidebar", status: "idle" }] },
+    { id: "blk-api", type: "block", title: "Inventory API", stack: "Node.js + tRPC", status: "idle", subBlocks: [{ id: "sub-api-1", type: "api", title: "Product Endpoints", status: "idle" }] },
+    { id: "blk-legacy", type: "legacy-system", title: "Legacy Gateway", status: "idle" }
   ]
 };
 
 function CanvasTabInner({
-  isPlanDocOpen,
-  setIsPlanDocOpen,
-  isPlanMode,
-  setActiveTab,
-  isPlanGenerated,
-  setIsPlanGenerated,
-  isChatSidebarOpen,
-  setIsChatSidebarOpen,
-  projectId
+  isPlanDocOpen, setIsPlanDocOpen, isPlanMode, setActiveTab,
+  isPlanGenerated, setIsPlanGenerated, isChatSidebarOpen,
+  setIsChatSidebarOpen, projectId, onGenerationComplete
 }: CanvasTabProps) {
-  const { theme } = useTheme();
   const { fitView } = useReactFlow();
   const { startNode, finishNode } = useEdgeHighlight();
   const { user } = useUser();
   const { getToken } = useAuth();
-  
   const isDemoMode = user?.primaryEmailAddress?.emailAddress === "demo@craftastudio.com";
-
-  // Cycle reference — tracks the setTimeout handle for the demo cycling loop
   const cycleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 1. Registry - Easy to extend
-  const nodeTypes = useMemo(() => ({
-    planner: PlannerNode,
-    block: BlockNode,
-    "legacy-system": UnknownBlockNode // Map unknown types either explicitly or allow catch-all in render
-  }), []);
-
+  const nodeTypes = useMemo(() => ({ planner: PlannerNode, block: BlockNode, "legacy-system": UnknownBlockNode }), []);
   const edgeTypes = useMemo(() => ({ flowing: FlowingEdge }), []);
 
-  // 2. React Flow State
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-
-  // 3. Engine State
   const [payload, setPayload] = useState<CanvasJSONPayload>(isDemoMode ? MOCK_PAYLOAD : { blocks: [] });
   const [selectedBlockInfo, setSelectedBlockInfo] = useState<any>(null);
   const [focusedBlock, setFocusedBlock] = useState<Node | null>(null);
   const [isChatMoved, setIsChatMoved] = useState(false);
   const [projectName, setProjectName] = useState("Alpha Project Alpha");
-  // Store the raw user prompt so Implement can pass it to the workflow
-  const lastPromptRef = useRef<string>("");
-
-  // WebSocket ref for live block status updates
-  const wsRef = useRef<WebSocket | null>(null);
-
-  // Live-connect to WebSocket for block status updates
-  useEffect(() => {
-    if (!projectId || isDemoMode) return;
-    const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004").replace("http", "ws")}/ws?projectId=${projectId}`;
-
-    let ws: WebSocket;
-    let doneCount = 0;
-
-    const connect = () => {
-      ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onmessage = (evt) => {
-        try {
-          const msg = JSON.parse(evt.data);
-          if (msg.event === "block:status_update") {
-            const { blockId, status } = msg;
-            // Update matching block — match on DB id (UUID)
-            setPayload(prev => {
-              const updated = prev.blocks.map(b =>
-                b.id === blockId ? { ...b, status } : b
-              );
-              const allDone = updated.every(b => b.status === "done" || b.status === "failed");
-              if (allDone) {
-                setIsImplementing(false);
-              }
-              return { blocks: updated };
-            });
-          }
-          if (msg.event === "workflow:completed" || msg.event === "workflow:failed") {
-            setIsImplementing(false);
-          }
-        } catch {}
-      };
-
-      ws.onerror = () => console.warn("[WS] Connection error — will retry");
-      ws.onclose = () => {
-        // Reconnect after 2s if page is still mounted
-        setTimeout(connect, 2000);
-      };
-    };
-
-    connect();
-    return () => {
-      ws?.close();
-      wsRef.current = null;
-    };
-  }, [projectId, isDemoMode]);
-
-  // Plan doc state — populated by Sarvam after user submits a prompt
   const [planDoc, setPlanDoc] = useState<any>(null);
   const [isPlanning, setIsPlanning] = useState(false);
   const [isImplementing, setIsImplementing] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
-
-  // Code viewer state
   const [codeViewerBlock, setCodeViewerBlock] = useState<{ id: string; title: string; stack?: string } | null>(null);
-
   const [mounted, setMounted] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  // WebSocket for live block updates
   useEffect(() => {
-    setMounted(true);
-  }, []);
+    if (!projectId || isDemoMode) return;
+    const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004").replace("http", "ws")}/ws?projectId=${projectId}`;
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg.event === "block:status_update") {
+          const { blockId, status, output } = msg;
+          setPayload(prev => ({
+            blocks: prev.blocks.map(b => b.id === blockId ? { ...b, status, outputCode: output } : b)
+          }));
+        }
+        if (msg.event === "workflow:completed") {
+          setIsImplementing(false);
+          onGenerationComplete?.(); // ✅ trigger Export/Share visibility
+        }
+        if (msg.event === "workflow:failed") {
+          setIsImplementing(false);
+        }
+      } catch {}
+    };
+    ws.onerror = () => console.warn("[WS] Connection error");
+    return () => { ws.close(); };
+  }, [projectId, isDemoMode, onGenerationComplete]);
 
-  // NOTE: We do NOT pre-load blocks from DB on mount.
-  // The prompt input is shown when payload.blocks is empty.
-  // Blocks are only set after a successful /api/plan call in this session.
+  // Fetch existing blocks
+  useEffect(() => {
+    if (!projectId || isDemoMode) return;
+    const fetchBlocks = async () => {
+      try {
+        const token = await getToken();
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
+        const res = await fetch(`${apiUrl}/api/blocks?projectId=${projectId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const blocks = await res.json();
+          if (blocks.length > 0) {
+            setPayload({
+              blocks: blocks.map((b: any) => ({
+                id: b.id, type: b.blockType,
+                title: b.blockJson?.title || "Untitled Block",
+                stack: b.blockJson?.stack || "Default Stack",
+                status: b.blockJson?.status || "idle",
+                subBlocks: b.blockJson?.subBlocks || []
+              }))
+            });
+          }
+        }
+      } catch (err) { console.error("Failed to fetch blocks:", err); }
+    };
+    fetchBlocks();
+  }, [projectId, isDemoMode, getToken]);
 
-
-  /**
-   * MAIN PROMPT HANDLER
-   * Calls Sarvam via /api/plan to generate a rich Architecture Plan Document.
-   * Shows preview blocks on canvas immediately, opens the PlanDocPanel.
-   */
   const handlePromptSubmit = useCallback(async (msg: string) => {
     setIsChatMoved(true);
-    // Don't open chat sidebar — we show the PlanDocPanel instead
     if (setIsChatSidebarOpen) setIsChatSidebarOpen(false);
-
-    // Open the plan panel with loading state immediately
     setIsPlanDocOpen(true);
     setPlanDoc(null);
     setIsPlanning(true);
 
     if (isDemoMode) {
-      // Demo mode: simulate Sarvam response with mock data
       const prompt = msg.toLowerCase();
       let newBlocks: CanvasBlock[] = [];
-
       if (prompt.includes("auth") || prompt.includes("login")) {
         newBlocks = [
           { id: "blk-clerk", type: "block", title: "Clerk Integration", stack: "Next.js", status: "idle", subBlocks: [{ id: "s1", type: "feat", title: "OAuth Providers" }] },
           { id: "blk-db-users", type: "block", title: "User Schema", stack: "Prisma", status: "idle", subBlocks: [{ id: "s2", type: "feat", title: "Profile Logic" }] }
         ];
-      } else if (prompt.includes("payment") || prompt.includes("stripe") || prompt.includes("shop")) {
-        newBlocks = [
-          { id: "blk-stripe", type: "block", title: "Stripe Gateway", stack: "Node.js", status: "idle", subBlocks: [{ id: "p1", type: "feat", title: "Webhooks" }] },
-          { id: "blk-cart", type: "block", title: "Cart Logic", stack: "React Query", status: "idle" },
-          { id: "blk-products", type: "block", title: "Product Catalog", stack: "Drizzle", status: "idle" }
-        ];
       } else {
         newBlocks = MOCK_PAYLOAD.blocks.slice(0, 4).map(b => ({ ...b, status: "idle" }));
       }
-
       setTimeout(() => {
-        setPlanDoc({
-          title: msg.slice(0, 40),
-          summary: "This is a demo plan generated by CraftaStudio. Click 'Implement This' to start building.",
-          markdown: `## Overview\nDemo architecture for: ${msg}\n\n## Modules\n${newBlocks.map(b => `- **${b.title}** (${b.stack})`).join("\n")}`,
-          blocks: newBlocks,
-        });
+        setPlanDoc({ title: msg.slice(0, 40), summary: "Demo plan. Click Implement This to start.", markdown: `## Overview\n${msg}`, blocks: newBlocks });
         setPayload({ blocks: newBlocks });
         setIsPlanning(false);
       }, 1200);
       return;
     }
 
-    // Real API mode — call backend → agent
     try {
-      lastPromptRef.current = msg; // store for Implement This
       const token = await getToken();
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
       const res = await fetch(`${apiUrl}/api/plan`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ prompt: msg, project_name: projectName, projectId }),
       });
-
-      if (!res.ok) {
-        const err = await res.text();
-        console.error("[CanvasTab] Plan API failed:", err);
-        setIsPlanning(false);
-        return;
-      }
-
+      if (!res.ok) { setIsPlanning(false); return; }
       const plan = await res.json();
       setPlanDoc(plan);
-
-      // Show blocks on canvas — use DB UUIDs returned by plan route
       if (plan.blocks?.length > 0) {
         setPayload({ blocks: plan.blocks.map((b: any) => ({ ...b, status: "idle" })) });
       }
@@ -302,180 +183,107 @@ function CanvasTabInner({
     }
   }, [setIsChatSidebarOpen, setIsPlanDocOpen, isDemoMode, projectId, projectName, getToken]);
 
-  /**
-   * IMPLEMENT HANDLER
-   * Called when user clicks "Implement This" in the PlanDocPanel.
-   * Triggers the full agent pipeline via /api/workflow/run.
-   */
   const handleImplement = useCallback(async () => {
     if (!planDoc || isImplementing) return;
     setIsImplementing(true);
 
     if (isDemoMode) {
-      // Demo: animate blocks to running then done
       setPayload(prev => ({ blocks: prev.blocks.map(b => ({ ...b, status: "running" })) }));
       setTimeout(() => {
         setPayload(prev => ({ blocks: prev.blocks.map(b => ({ ...b, status: "done" })) }));
         setIsImplementing(false);
+        onGenerationComplete?.(); // ✅ demo mode also triggers
       }, 3000);
       return;
     }
 
-    if (!projectId) {
-      console.warn("[CanvasTab] Cannot implement — no projectId");
-      setIsImplementing(false);
-      return;
-    }
+    if (!projectId) { setIsImplementing(false); return; }
 
     try {
       const token = await getToken();
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
-
-      // Use the original prompt — not just the summary
-      const prompt = lastPromptRef.current || planDoc.summary || planDoc.title || "Build this project";
-
       const res = await fetch(`${apiUrl}/api/workflow/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ projectId, prompt }),
+        body: JSON.stringify({ projectId, prompt: planDoc.summary || planDoc.title }),
       });
-
       if (res.ok) {
         const data = await res.json();
         setCurrentRunId(data.runId ?? null);
-        console.log(`[CanvasTab] Workflow started: runId=${data.runId}, blocks=${data.blockCount}`);
-
-        // Set ALL blocks to 'running' immediately for visual feedback
         setPayload(prev => ({ blocks: prev.blocks.map(b => ({ ...b, status: "running" })) }));
-
-        // WebSocket will update each block to 'done' as the worker finishes.
-        // Fallback: if WS is silent for 3 minutes, reset state.
-        const fallback = setTimeout(() => {
-          console.warn("[CanvasTab] Implement fallback timeout — resetting state");
-          setIsImplementing(false);
-        }, 180_000);
-
-        // Clean up fallback timer when all done (handled in WS effect above)
-        return () => clearTimeout(fallback);
+        // WebSocket will handle completion and call onGenerationComplete
+        // Fallback poll
+        const pollInterval = setInterval(async () => {
+          const pollRes = await fetch(`${apiUrl}/api/blocks?projectId=${projectId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (pollRes.ok) {
+            const blocks = await pollRes.json();
+            const allDone = blocks.every((b: any) => b.blockJson?.status === "done" || b.blockJson?.status === "failed");
+            if (allDone && blocks.length > 0) {
+              clearInterval(pollInterval);
+              setPayload({ blocks: blocks.map((b: any) => ({ id: b.id, type: b.blockType, title: b.blockJson?.title || "Module", stack: b.blockJson?.stack || "", status: b.blockJson?.status || "done", subBlocks: b.blockJson?.subBlocks || [] })) });
+              setIsImplementing(false);
+              onGenerationComplete?.();
+            }
+          }
+        }, 3000);
+        setTimeout(() => { clearInterval(pollInterval); setIsImplementing(false); }, 120_000);
       } else {
-        const errorText = await res.text();
-        console.error("[CanvasTab] Implement API rejected:", res.status, errorText);
         setIsImplementing(false);
       }
     } catch (err) {
       console.error("[CanvasTab] Implement failed:", err);
       setIsImplementing(false);
     }
-  }, [planDoc, isImplementing, isDemoMode, projectId, getToken]);
+  }, [planDoc, isImplementing, isDemoMode, projectId, getToken, onGenerationComplete]);
 
-  /**
-   * CORE TRANSFORMATION: Payload -> Circular Layout -> Nodes/Edges
-   */
   const refreshLayout = useCallback(() => {
-    // Planner node width is 420px → offset by -210 to center it on the origin
-    const PLANNER_OFFSET = { x: -210, y: -80 };
-    const { nodes: newNodes, edges: newEdges } = calculateCircularLayout(payload, PLANNER_OFFSET);
-
-    // 2. Hydrate nodes with application-specific callbacks
+    const { nodes: newNodes, edges: newEdges } = calculateCircularLayout(payload, { x: -210, y: -80 });
     const hydratedNodes = newNodes.map(node => {
       if (node.id === "planner") {
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            projectName,
-            onProjectNameChange: setProjectName,
-            onPromptSubmit: handlePromptSubmit
-          }
-        };
+        return { ...node, data: { ...node.data, projectName, onProjectNameChange: setProjectName, onPromptSubmit: handlePromptSubmit } };
       }
       return {
-        ...node,
-        data: {
+        ...node, data: {
           ...node.data,
-          // Pass interaction handlers down to the Block components
           onInfoClick: (info: any) => setSelectedBlockInfo(info),
           onViewCode: (block: any) => setCodeViewerBlock({ id: block.id, title: block.title, stack: block.stack }),
-          onSubblockClick: (sub: any) => {
-            console.log("Sub-block selected:", sub);
-            setActiveTab("code");
-          }
+          onSubblockClick: () => setActiveTab("code")
         }
       };
     });
-
     setNodes(hydratedNodes);
     setEdges(newEdges);
   }, [payload, projectName, setActiveTab, setEdges, setNodes, handlePromptSubmit]);
 
-  // Handle Payload Changes
   useEffect(() => {
     refreshLayout();
-    // Auto-fit view when layout regenerates
     setTimeout(() => fitView({ duration: 800, padding: 0.3 }), 100);
   }, [payload, refreshLayout, fitView]);
 
-  /**
-   * ── Edge Highlight Sync ────────────────────────────────────────────────
-   * Derives activeNodeId from payload status.
-   * When a block has status "running", its ID is set as activeNodeId; all
-   * connected edges highlight automatically via context — no state is stored
-   * inside the edge data itself.
-   *
-   * Demo cycling: if no block is explicitly running, we cycle through blocks
-   * every 1.8 s to visually demonstrate the flow highlight system.
-   */
   useEffect(() => {
-    // Clear any existing cycle timer on payload change
-    if (cycleTimerRef.current) {
-      clearTimeout(cycleTimerRef.current);
-      cycleTimerRef.current = null;
-    }
-
+    if (cycleTimerRef.current) { clearTimeout(cycleTimerRef.current); cycleTimerRef.current = null; }
     const runningBlock = payload.blocks.find(b => b.status === "running");
-
     if (runningBlock) {
-      // Explicit running block — activate immediately
       startNode(runningBlock.id);
     } else {
-      // No explicit running block — start a demo cycle to showcase the system
       const blockIds = payload.blocks.map(b => b.id);
       if (blockIds.length === 0) { finishNode(); return; }
-
       let idx = 0;
-      const STEP_MS  = 1800; // time each node stays "active"
-      const PAUSE_MS = 400;  // brief pause between nodes
-
       const cycle = () => {
         startNode(blockIds[idx]);
         idx = (idx + 1) % blockIds.length;
-
-        cycleTimerRef.current = setTimeout(() => {
-          finishNode();
-          cycleTimerRef.current = setTimeout(cycle, PAUSE_MS);
-        }, STEP_MS);
+        cycleTimerRef.current = setTimeout(() => { finishNode(); cycleTimerRef.current = setTimeout(cycle, 400); }, 1800);
       };
-
       cycle();
     }
-
-    return () => {
-      if (cycleTimerRef.current) clearTimeout(cycleTimerRef.current);
-    };
+    return () => { if (cycleTimerRef.current) clearTimeout(cycleTimerRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payload]);
 
-  const onNodeClick = (_: any, node: Node) => {
-    if (node.type === "block") {
-      setFocusedBlock(node);
-      // Logic from plan: Pass selected block to settings/inspector
-      console.log("Selecting block for inspector:", node.data);
-    }
-  };
+  const onNodeClick = (_: any, node: Node) => { if (node.type === "block") setFocusedBlock(node); };
 
-  // Only block render until the component is hydrated on the client.
-  // We do NOT block on projectId — if the backend sync hasn't returned yet,
-  // we still show the chat UI so the user is never stuck on the loading screen.
   if (!mounted) {
     return (
       <div className="flex-1 h-full flex flex-col items-center justify-center p-8 bg-[var(--background)]">
@@ -502,14 +310,9 @@ function CanvasTabInner({
                 Describe your application architecture. Our agents will plan the system and generate the foundational blocks.
               </p>
             </div>
-            
             <div className="w-full max-w-xl">
-              <PromptInputBox
-                className="bg-[var(--surface)]/80 backdrop-blur-xl border border-[var(--border)] shadow-2xl scale-110"
-                onSend={handlePromptSubmit}
-              />
+              <PromptInputBox className="bg-[var(--surface)]/80 backdrop-blur-xl border border-[var(--border)] shadow-2xl scale-110" onSend={handlePromptSubmit} />
             </div>
-            
             <div className="flex gap-4 text-sm text-muted-foreground pt-4">
               <button onClick={() => handlePromptSubmit("I need a SaaS boilerplate with Next.js, Clerk Auth, and Stripe subscriptions.")} className="hover:text-foreground transition-colors px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5">
                 SaaS Boilerplate
@@ -522,131 +325,44 @@ function CanvasTabInner({
         </div>
       ) : (
         <ReactFlow
-          nodes={nodes}
-          edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodeClick={onNodeClick}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.3 }}
-        minZoom={0.2}
-        maxZoom={2}
-        className="[&_.react-flow__attribution]:hidden"
-      >
-        {mounted && (
-          <Background
-            color="var(--primary-accent)"
-            gap={36}
-            size={0.8}
-            variant={"dots" as any}
-            className="opacity-[0.15]"
-          />
-        )}
-        <Controls
-          className="
-            !border-0 !rounded-2xl !shadow-xl !overflow-hidden
-            [&_button]:!border-0 [&_button]:!w-8 [&_button]:!h-8
-            [&_button]:!flex [&_button]:!items-center [&_button]:!justify-center
-            [&_button]:!transition-colors [&_button]:!duration-150
-            [&_button_svg]:!w-4 [&_button_svg]:!h-4
-            [&_button_svg]:!fill-[var(--foreground)]
-            [&_button]:!bg-[var(--surface)]
-            [&_button]:!text-[var(--foreground)]
-            [&_button:hover]:!bg-[var(--primary-accent)]/15
-            [&_button:hover_svg]:!fill-[var(--primary-accent)]
-          "
-          showInteractive={false}
-        />
-        {/* New Plan button */}
-        <Panel position="top-right">
-          <button
-            onClick={() => {
-              setPayload({ blocks: [] });
-              setPlanDoc(null);
-              setIsPlanDocOpen(false);
-              setIsChatMoved(false);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--surface)] border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:border-[var(--primary-accent)]/40 transition-all shadow-lg"
-          >
-            ＋ New Plan
-          </button>
-        </Panel>
-      </ReactFlow>
+          nodes={nodes} edges={edges}
+          onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
+          onNodeClick={onNodeClick}
+          nodeTypes={nodeTypes} edgeTypes={edgeTypes}
+          fitView fitViewOptions={{ padding: 0.3 }}
+          minZoom={0.2} maxZoom={2}
+          className="[&_.react-flow__attribution]:hidden"
+        >
+          {mounted && <Background color="var(--primary-accent)" gap={36} size={0.8} variant={"dots" as any} className="opacity-[0.15]" />}
+          <Controls className="!border-0 !rounded-2xl !shadow-xl !overflow-hidden [&_button]:!border-0 [&_button]:!w-8 [&_button]:!h-8 [&_button]:!flex [&_button]:!items-center [&_button]:!justify-center [&_button]:!transition-colors [&_button]:!duration-150 [&_button_svg]:!w-4 [&_button_svg]:!h-4 [&_button_svg]:!fill-[var(--foreground)] [&_button]:!bg-[var(--surface)] [&_button]:!text-[var(--foreground)] [&_button:hover]:!bg-[var(--primary-accent)]/15 [&_button:hover_svg]:!fill-[var(--primary-accent)]" showInteractive={false} />
+        </ReactFlow>
       )}
 
-      {/* Dynamic Overlays Mapping Payload State to UI */}
-      <PlanDocPanel
-        isOpen={isPlanDocOpen}
-        onClose={() => setIsPlanDocOpen(false)}
-        planDoc={planDoc}
-        isLoading={isPlanning}
-        onImplement={handleImplement}
-        isImplementing={isImplementing}
-      />
+      <PlanDocPanel isOpen={isPlanDocOpen} onClose={() => setIsPlanDocOpen(false)} planDoc={planDoc} isLoading={isPlanning} onImplement={handleImplement} isImplementing={isImplementing} />
+      <BlockInfoPanel isOpen={!!selectedBlockInfo} onClose={() => setSelectedBlockInfo(null)} data={selectedBlockInfo} />
 
-      <BlockInfoPanel
-        isOpen={!!selectedBlockInfo}
-        onClose={() => setSelectedBlockInfo(null)}
-        data={selectedBlockInfo}
-      />
-
-      {/* Sidebar Chat Box (Animated) */}
       {isChatMoved && (
-        <div className={cn(
-          "absolute top-0 right-0 w-[420px] h-full z-[40] flex flex-col transition-all duration-500 ease-in-out bg-[var(--surface)]/98 backdrop-blur-2xl border-l border-[var(--border)] shadow-[-20px_0_50px_rgba(0,0,0,0.1)] dark:shadow-[-20px_0_50px_rgba(0,0,0,0.5)]",
-          isChatSidebarOpen ? "translate-x-0" : "translate-x-full"
-        )}>
+        <div className={cn("absolute top-0 right-0 w-[420px] h-full z-[40] flex flex-col transition-all duration-500 ease-in-out bg-[var(--surface)]/98 backdrop-blur-2xl border-l border-[var(--border)] shadow-[-20px_0_50px_rgba(0,0,0,0.1)] dark:shadow-[-20px_0_50px_rgba(0,0,0,0.5)]", isChatSidebarOpen ? "translate-x-0" : "translate-x-full")}>
           <div className="h-14 flex items-center justify-between px-6 border-b border-[var(--border)]">
             <div className="flex items-center gap-2">
               <div className="size-2 rounded-full bg-[var(--primary-accent)] shadow-[0_0_8px_var(--primary-accent)]" />
               <span className="text-[10px] font-bold text-[var(--muted-foreground)] uppercase tracking-[0.2em]">Project Stream</span>
             </div>
-            <button
-              onClick={() => setIsChatSidebarOpen?.(false)}
-              className="p-1 hover:bg-[var(--foreground)]/5 rounded-lg text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
-            >
+            <button onClick={() => setIsChatSidebarOpen?.(false)} className="p-1 hover:bg-[var(--foreground)]/5 rounded-lg text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
             </button>
           </div>
-
           <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-none">
-            {/* Dynamic content would render here based on chat history state */}
-            <div className="bg-[var(--foreground)]/[0.03] border border-[var(--border)] p-4 rounded-2xl text-xs text-[var(--muted-foreground)] leading-relaxed italic">
-              Waiting for architect analysis...
-            </div>
+            <div className="bg-[var(--foreground)]/[0.03] border border-[var(--border)] p-4 rounded-2xl text-xs text-[var(--muted-foreground)] leading-relaxed italic">Waiting for architect analysis...</div>
           </div>
-
           <div className="p-6">
-            <PromptInputBox
-              className="bg-[var(--background)] border-[var(--border)] shadow-xl"
-              onSend={handlePromptSubmit}
-            />
+            <PromptInputBox className="bg-[var(--background)] border-[var(--border)] shadow-xl" onSend={handlePromptSubmit} />
           </div>
         </div>
       )}
 
-      {/* Focused Block Details */}
-      <BlockFocusOverlay
-        block={focusedBlock}
-        onClose={() => setFocusedBlock(null)}
-        onSubblockClick={() => {
-          setFocusedBlock(null);
-          setActiveTab("code");
-        }}
-      />
-
-      {/* Code Viewer Modal */}
-      <CodeViewerModal
-        isOpen={!!codeViewerBlock}
-        onClose={() => setCodeViewerBlock(null)}
-        blockId={codeViewerBlock?.id ?? null}
-        blockTitle={codeViewerBlock?.title ?? ""}
-        blockStack={codeViewerBlock?.stack}
-        projectId={projectId ?? null}
-        runId={currentRunId}
-      />
+      <BlockFocusOverlay block={focusedBlock} onClose={() => setFocusedBlock(null)} onSubblockClick={() => { setFocusedBlock(null); setActiveTab("code"); }} />
+      <CodeViewerModal isOpen={!!codeViewerBlock} onClose={() => setCodeViewerBlock(null)} blockId={codeViewerBlock?.id ?? null} blockTitle={codeViewerBlock?.title ?? ""} blockStack={codeViewerBlock?.stack} projectId={projectId ?? null} runId={currentRunId} />
     </div>
   );
 }

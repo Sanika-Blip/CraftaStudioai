@@ -6,7 +6,7 @@ import prisma from '../lib/prisma'
 const PlanDocSchema = z.object({
   prompt: z.string().min(2),
   project_name: z.string().optional().default('My Project'),
-  projectId: z.string().uuid().optional(),
+  projectId: z.string().uuid().nullable().optional(),
 })
 
 // Convert a block title to a slug used as blockType in DB
