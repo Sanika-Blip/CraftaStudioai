@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { TopNav } from "@/components/layout/top-nav";
@@ -10,6 +10,7 @@ import { CodeTab } from "@/components/features/editor/code-tab";
 import { PreviewTab } from "@/components/features/editor/preview-tab";
 import { SettingsPanel } from "@/components/features/settings/settings-panel";
 import { MainSidebar } from "@/components/layout/main-sidebar";
+import { HistoryPanel } from "@/components/features/canvas/history-panel";
 
 export default function CraftaStudio() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
@@ -22,61 +23,61 @@ export default function CraftaStudio() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isChatSidebarOpen, setIsChatSidebarOpen] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
-  // Redirect to sign-in if not authenticated
+  // ✅ Track whether any code has been generated — controls Export & Share visibility
+  const [hasGeneratedOutput, setHasGeneratedOutput] = useState(false);
+
+  // ✅ Track selected run from history — passed to CodeTab
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
       router.replace("/sign-in");
     }
   }, [isLoaded, isSignedIn, router]);
 
-  // Sync the authenticated Clerk user into our database
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
-
     const syncUser = async () => {
       try {
         const token = await getToken();
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
-
-        // Abort if backend takes longer than 5 seconds — never block the UI
         const controller = new AbortController();
         const timeout = setTimeout(() => {
           controller.abort();
-          console.warn("[Dashboard] Sync timed out — proceeding without projectId");
+          console.warn("[Dashboard] Sync timed out");
         }, 5000);
-
         const res = await fetch(`${apiUrl}/api/auth/sync`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           signal: controller.signal,
         });
-
         clearTimeout(timeout);
-
-        if (!res.ok) {
-          console.error(`[Dashboard] Sync failed with status ${res.status}`);
-          return;
-        }
-
+        if (!res.ok) return;
         const user = await res.json();
         const firstProject = user?.teams?.[0]?.projects?.[0];
-        if (firstProject) {
-          setProjectId(firstProject.id);
-        } else {
-          console.warn("[Dashboard] No project found — user may be new");
-        }
+        if (firstProject) setProjectId(firstProject.id);
       } catch (err: any) {
-        if (err?.name === "AbortError") return; // timeout, silently ignore
+        if (err?.name === "AbortError") return;
         console.error("[Dashboard] Failed to sync user:", err);
-        // Don't block — canvas renders with null projectId (shows empty chat UI)
       }
     };
-
     syncUser();
   }, [isLoaded, isSignedIn]);
 
-  // Show spinner while Clerk loads or if not signed in (redirect is in progress)
+  // ✅ Called by CanvasTab when generation completes
+  const handleGenerationComplete = useCallback(() => {
+    setHasGeneratedOutput(true);
+  }, []);
+
+  // ✅ Called by HistoryPanel when user loads a past run
+  const handleSelectRun = useCallback((runId: string) => {
+    setSelectedRunId(runId);
+    setHasGeneratedOutput(true);
+    setActiveTab("code"); // Switch to code tab to show the output
+  }, []);
+
   if (!isLoaded || !isSignedIn) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
@@ -87,11 +88,12 @@ export default function CraftaStudio() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <MainSidebar 
+      <MainSidebar
         onOpenSettings={(tab) => {
-           localStorage.setItem("craftastudio-settings-tab", tab);
-           setIsSettingsOpen(true);
-        }} 
+          localStorage.setItem("craftastudio-settings-tab", tab);
+          setIsSettingsOpen(true);
+        }}
+        onHistoryClick={() => setIsHistoryOpen(true)}
       />
       <div className="flex flex-col flex-1 relative overflow-hidden">
         <TopNav
@@ -105,7 +107,7 @@ export default function CraftaStudio() {
           isChatSidebarOpen={isChatSidebarOpen}
           setIsChatSidebarOpen={setIsChatSidebarOpen}
         />
-        <main className="flex-1 relative">
+        <main className="flex-1 relative overflow-hidden">
           {activeTab === "canvas" && (
             <CanvasTab
               isPlanDocOpen={isPlanDocOpen}
@@ -117,17 +119,32 @@ export default function CraftaStudio() {
               isChatSidebarOpen={isChatSidebarOpen}
               setIsChatSidebarOpen={setIsChatSidebarOpen}
               projectId={projectId}
+              onGenerationComplete={handleGenerationComplete}
             />
           )}
-          {activeTab === "code" && <CodeTab projectId={projectId} />}
-          {activeTab === "preview" && <PreviewTab projectId={projectId} />}
+          {activeTab === "code" && (
+            <CodeTab
+              projectId={projectId}
+            />
+          )}
+          {activeTab === "preview" && <PreviewTab />}
         </main>
-        <StatusBar />
+
+        {/* ✅ Export & Share only visible when output exists */}
+        <StatusBar hasGeneratedOutput={hasGeneratedOutput} />
       </div>
 
       <SettingsPanel
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+      />
+
+      {/* ✅ History panel — per user, no data leakage */}
+      <HistoryPanel
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        projectId={projectId}
+        onSelectRun={handleSelectRun}
       />
     </div>
   );

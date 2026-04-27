@@ -47,76 +47,118 @@ async function fetchClerkUser(clerkId: string): Promise<ClerkUserData> {
 export async function getOrCreateUser(clerkId: string) {
   try {
     console.log("[getOrCreateUser] Starting for clerkId:", clerkId);
-    let user = await prisma.user.findUnique({
+    let userData = await prisma.user.findUnique({
       where: { clerkId },
       include: {
-        teams: {
+        teamMemberships: {
           include: {
-            projects: true
+            team: {
+              include: {
+                projects: true
+              }
+            }
           }
         }
       }
     });
 
-    if (!user) {
+    if (!userData) {
       console.log("[getOrCreateUser] User not found, creating new one...");
       const { email, name } = await fetchClerkUser(clerkId);
       console.log("[getOrCreateUser] Clerk data fetched:", { email, name });
 
-      user = await prisma.user.create({
+      const createdUser = await prisma.user.create({
         data: {
           clerkId,
           email,
-          name,
-          teams: {
-            create: [{
-              name: "Personal Workspace",
-              projects: {
-                create: [{
-                  name: "My First Architecture",
-                }]
-              }
-            }]
-          }
-        },
+          name
+        }
+      });
+
+      const team = await prisma.team.create({
+        data: {
+          name: "Personal Workspace"
+        }
+      });
+
+      await prisma.teamMember.create({
+        data: {
+          teamId: team.id,
+          userId: createdUser.id,
+          role: 'owner'
+        }
+      });
+
+      await prisma.project.create({
+        data: {
+          teamId: team.id,
+          name: "My First Architecture"
+        }
+      });
+
+      // Fetch again with includes
+      userData = (await prisma.user.findUnique({
+        where: { clerkId },
         include: {
-          teams: {
+          teamMemberships: {
             include: {
-              projects: true
+              team: {
+                include: {
+                  projects: true
+                }
+              }
             }
           }
         }
-      });
+      }))!
+
       console.log("[getOrCreateUser] User created successfully");
     }
 
     // Ensure an existing user who somehow lacks a team/project gets one
-    if (user && user.teams.length === 0) {
+    if (userData && userData.teamMemberships.length === 0) {
       console.log("[getOrCreateUser] User lacks team, creating default...");
       const newTeam = await prisma.team.create({
         data: {
-          name: "Personal Workspace",
-          userId: user.id,
-          projects: {
-            create: [{ name: "My First Architecture" }]
-          }
-        },
-        include: { projects: true }
+          name: "Personal Workspace"
+        }
       });
-      user.teams = [newTeam];
-    } else if (user && user.teams[0].projects.length === 0) {
+      await prisma.teamMember.create({
+        data: {
+          teamId: newTeam.id,
+          userId: userData.id,
+          role: 'owner'
+        }
+      });
+      const newProject = await prisma.project.create({
+        data: {
+          name: "My First Architecture",
+          teamId: newTeam.id
+        }
+      });
+      // Update user include
+      userData.teamMemberships = [{
+        id: '', // dummy
+        teamId: newTeam.id,
+        userId: userData.id,
+        role: 'owner',
+        joinedAt: new Date(),
+        updatedAt: new Date(),
+        team: { ...newTeam, projects: [newProject] }
+      }];
+    } else if (userData && userData.teamMemberships[0].team.projects.length === 0) {
       console.log("[getOrCreateUser] User lacks project, creating default...");
       const newProject = await prisma.project.create({
         data: {
           name: "My First Architecture",
-          teamId: user.teams[0].id
+          teamId: userData.teamMemberships[0].team.id
         }
       });
-      user.teams[0].projects = [newProject];
+      userData.teamMemberships[0].team.projects = [newProject];
     }
 
-    console.log("[getOrCreateUser] Returning user with project:", user.teams?.[0]?.projects?.[0]?.id);
-    return user;
+    console.log("[getOrCreateUser] Returning user with project:", userData.teamMemberships?.[0]?.team?.projects?.[0]?.id);
+    return userData;
   } catch (err: any) {
     console.error("[getOrCreateUser] FATAL ERROR:", err.message);
     throw err;

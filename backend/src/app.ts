@@ -56,7 +56,7 @@ export async function buildServer() {
   await app.register(websocket)
 
   // ── Global Error Handler ──
-  app.setErrorHandler((error, request, reply) => {
+  app.setErrorHandler((error: any, request, reply) => {
     const statusCode = error.statusCode ?? 500
 
     app.log.error({
@@ -68,8 +68,8 @@ export async function buildServer() {
 
     return reply.code(statusCode).send({
       statusCode,
-      error: error.name ?? 'Internal Server Error',
-      message: error.message ?? 'An unexpected error occurred',
+      error: (error as any).name ?? 'Internal Server Error',
+      message: (error as any).message ?? 'An unexpected error occurred',
     })
   })
 

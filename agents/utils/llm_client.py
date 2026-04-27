@@ -32,10 +32,10 @@ if not pk:
     print("⚠️  DEBUG: Langfuse keys not found. Switching to Mock Tracing.")
     langfuse = MockLangfuse()
 elif Langfuse is None:
-    print("⚠️  DEBUG: Langfuse package not installed. Switching to Mock Tracing.")
+    print("DEBUG: Langfuse package not installed. Switching to Mock Tracing.")
     langfuse = MockLangfuse()
 else:
-    print(f"✅ DEBUG: Langfuse initialized with {pk[:8]}...")
+    print(f"DEBUG: Langfuse initialized with {pk[:8]}...")
     langfuse = Langfuse(public_key=pk, secret_key=sk, host=host)
 
 
@@ -54,7 +54,7 @@ class GroqLLMClient:
         self._client = Groq(api_key=key)
         return self._client
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=8))
+    @retry(stop=stop_after_attempt(1))
     def call(self, system_prompt: str, user_message: str, **kwargs) -> dict:
         client = self._get_client()
 
@@ -66,26 +66,44 @@ class GroqLLMClient:
                 "output_tokens": 0,
             }
 
-        model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+        # Strategy: Try 70B, fallback to 8B, fallback to Sarvam
+        models_to_try = [
+            os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            "llama-3.1-8b-instant"
+        ]
+
+        for model in models_to_try:
+            try:
+                print(f"[Groq] Attempting with model {model}...")
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ],
+                    temperature=0.2,
+                    max_tokens=4096,
+                )
+                text = response.choices[0].message.content or ""
+                print(f"✅ [Groq/plan] {len(text)} chars with {model}")
+                return {
+                    "text": text,
+                    "input_tokens": getattr(response.usage, "prompt_tokens", 0),
+                    "output_tokens": getattr(response.usage, "completion_tokens", 0),
+                }
+            except Exception as e:
+                err_msg = str(e).lower()
+                print(f"⚠️ [Groq/plan] {model} failed: {e}")
+                if "rate limit" not in err_msg and "429" not in err_msg:
+                    raise  # If it's not a rate limit, don't try other Groq models
+
+        # If we reach here, all Groq models hit rate limits. Fall back to Sarvam.
+        print("⚠️ [Groq] Rate limit hit on all models. Falling back to Sarvam...")
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message},
-                ],
-                temperature=0.2,
-                max_tokens=4096,
-            )
-            text = response.choices[0].message.content or ""
-            print(f"✅ [Groq/plan] {len(text)} chars")
-            return {
-                "text": text,
-                "input_tokens": getattr(response.usage, "prompt_tokens", 0),
-                "output_tokens": getattr(response.usage, "completion_tokens", 0),
-            }
+            sarvam = SarvamClient()
+            return sarvam.call(system_prompt, user_message, **kwargs)
         except Exception as e:
-            print(f"❌ [Groq/plan] Error: {e}")
+            print(f"❌ [Fallback] Sarvam also failed: {e}")
             raise
 
 

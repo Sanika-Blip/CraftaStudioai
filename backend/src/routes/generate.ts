@@ -19,7 +19,7 @@ export async function generateRoutes(app: FastifyInstance) {
   app.post('/:id/generate', { preHandler: verifyClerk }, async (req: any, reply) => {
 
     const clerkId = req.user.sub
-    await getOrCreateUser(clerkId)
+    const user = await getOrCreateUser(clerkId)
 
     const { id: projectId } = req.params
 
@@ -57,6 +57,7 @@ export async function generateRoutes(app: FastifyInstance) {
         prompt,
         status: 'pending',
         sharedContextJson: { memoryContext } as any,
+        triggeredByUserId: user.id,
       },
     })
 
