@@ -149,7 +149,7 @@ class PlanDocResponse(BaseModel):
 async def plan_doc(req: PlanDocRequest) -> PlanDocResponse:
     """
     Calls Sarvam LLM to generate a rich Architecture Plan Document.
-    Returns structured markdown + canvas-ready block list.
+    Returns structured markdown + canvas-ready block list parsed from the markdown table.
     """
     prompt_path = os.path.join(os.path.dirname(__file__), "..", "prompts", "plan_doc.txt")
 
@@ -162,32 +162,51 @@ async def plan_doc(req: PlanDocRequest) -> PlanDocResponse:
     user_message = (
         f"Project Name: {req.project_name}\n"
         f"User Request: {req.prompt}\n\n"
-        "Generate the Architecture Plan JSON now. Respond with ONLY valid JSON."
+        "Generate the Architecture Plan in strict Markdown format now."
     )
 
     try:
         response = ai.call(system_prompt=system_prompt, user_message=user_message)
         raw_text = response["text"].strip()
 
-        # Use repair_json to handle truncated or fence-wrapped LLM output
-        json_str = repair_json(raw_text)
+        title = req.project_name or "Architecture Plan"
+        summary = "Architecture plan generated from prompt."
+        is_chat = False
+        blocks = []
 
-        try:
-            plan_data = json.loads(json_str)
-        except json.JSONDecodeError as inner_e:
-            print(f"[plan-doc] JSON parse error after repair: {inner_e}")
-            print(f"[plan-doc] Raw (first 800 chars): {raw_text[:800]}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"LLM returned invalid JSON: {str(inner_e)}"
-            )
+        if "## Blocks" not in raw_text:
+            is_chat = True
+        else:
+            lines = raw_text.split("\n")
+            in_blocks_table = False
+            for line in lines:
+                if line.startswith("## Blocks"):
+                    in_blocks_table = True
+                    continue
+                if in_blocks_table and line.startswith("## "):
+                    in_blocks_table = False
+                    continue
+                
+                if in_blocks_table and line.strip().startswith("|") and "Block ID" not in line and "---" not in line:
+                    parts = [p.strip() for p in line.split("|") if p.strip()]
+                    if len(parts) >= 4:
+                        blocks.append({
+                            "id": parts[0],
+                            "title": parts[1],
+                            "blockType": parts[2],
+                            "type": "block",
+                            "stack": "Default Stack",
+                            "description": parts[3],
+                            "status": "idle",
+                            "subBlocks": []
+                        })
 
         return PlanDocResponse(
-            title=plan_data.get("title", req.project_name),
-            summary=plan_data.get("summary", ""),
-            markdown=plan_data.get("markdown", ""),
-            blocks=plan_data.get("blocks", []),
-            is_chat=plan_data.get("is_chat", False)
+            title=title,
+            summary=summary,
+            markdown=raw_text,
+            blocks=blocks,
+            is_chat=is_chat
         )
 
     except HTTPException:

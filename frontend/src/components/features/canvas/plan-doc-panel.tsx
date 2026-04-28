@@ -1,7 +1,27 @@
 "use client";
 
-import { X, FileText, CheckCircle2, CircleDashed, Loader2, Zap, ChevronRight } from "lucide-react";
+import React from "react";
+import { X, FileText, CheckCircle2, CircleDashed, Loader2, Zap, Edit3, Save, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import mermaid from "mermaid";
+
+mermaid.initialize({ startOnLoad: false, theme: "dark" });
+
+function MermaidDiagram({ chart }: { chart: string }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (ref.current) {
+      mermaid.render(`mermaid-${Math.random().toString(36).substr(2, 9)}`, chart).then(({ svg }) => {
+        if (ref.current) ref.current.innerHTML = svg;
+      }).catch(e => console.error("Mermaid error", e));
+    }
+  }, [chart]);
+
+  return <div ref={ref} className="mermaid-diagram my-4 flex justify-center w-full overflow-auto text-xs" />;
+}
 
 interface PlanBlock {
   id: string;
@@ -22,53 +42,63 @@ interface PlanDocPanelProps {
     markdown: string;
     blocks: PlanBlock[];
     is_chat?: boolean;
+    projectId?: string;
   } | null;
   isLoading?: boolean;
   onImplement?: () => void;
   isImplementing?: boolean;
 }
 
-function MarkdownRenderer({ content }: { content: string }) {
-  const lines = content.split("\n");
-  return (
-    <div className="text-xs leading-relaxed text-[var(--muted-foreground)] space-y-2">
-      {lines.map((line, i) => {
-        if (line.startsWith("## ")) {
-          return (
-            <h3 key={i} className="text-[11px] font-bold text-[var(--foreground)] uppercase tracking-widest mt-4 mb-1 border-b border-[var(--border)] pb-1">
-              {line.replace("## ", "")}
-            </h3>
-          );
-        }
-        if (line.startsWith("### ")) {
-          return (
-            <h4 key={i} className="text-[10px] font-semibold text-[var(--primary-accent)] mt-3 mb-0.5">
-              {line.replace("### ", "")}
-            </h4>
-          );
-        }
-        if (line.startsWith("- ") || line.startsWith("* ")) {
-          return (
-            <div key={i} className="flex items-start gap-1.5 pl-1">
-              <ChevronRight className="size-3 mt-0.5 shrink-0 text-[var(--primary-accent)]/60" />
-              <span>{line.replace(/^[-*] /, "")}</span>
-            </div>
-          );
-        }
-        if (line.startsWith("**") && line.endsWith("**")) {
-          return <p key={i} className="font-semibold text-[var(--foreground)]">{line.replace(/\*\*/g, "")}</p>;
-        }
-        if (line.trim() === "") return <div key={i} className="h-1" />;
-        return <p key={i}>{line}</p>;
-      })}
-    </div>
-  );
-}
-
 export function PlanDocPanel({ isOpen, onClose, planDoc, isLoading, onImplement, isImplementing }: PlanDocPanelProps) {
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [editedMarkdown, setEditedMarkdown] = React.useState("");
+  const [validation, setValidation] = React.useState<{valid: boolean, missing: string[]}>({ valid: true, missing: [] });
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (planDoc?.markdown && !isEditing) {
+      setEditedMarkdown(planDoc.markdown);
+    }
+  }, [planDoc, isEditing]);
+
+  React.useEffect(() => {
+    const doc = editedMarkdown || "";
+    const missing: string[] = [];
+
+    if (!doc.includes("## Overview")) missing.push("Overview");
+    if (!doc.includes("## Architecture")) missing.push("Architecture");
+    if (!doc.includes("## Blocks") && !doc.includes("| Block ID |")) missing.push("Blocks Table");
+    if (!doc.includes("## Pages")) missing.push("Pages");
+    if (!doc.includes("## Data Models")) missing.push("Data Models");
+    if (!doc.includes("## API Endpoints")) missing.push("API Endpoints");
+    if (!doc.includes("## Build Order")) missing.push("Build Order");
+
+    setValidation({ valid: missing.length === 0, missing });
+  }, [editedMarkdown]);
+
+  const handleSave = async () => {
+    if (!planDoc?.projectId) {
+      setIsEditing(false);
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await fetch(`/api/projects/${planDoc.projectId}/plan`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editedMarkdown }),
+      });
+      setIsEditing(false);
+    } catch (e) {
+      console.error("Failed to save plan", e);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className={cn(
-      "absolute top-0 right-0 h-full w-[320px] border-l border-[var(--border)] bg-[var(--surface)]/98 backdrop-blur-md z-[60] flex flex-col shadow-2xl transition-all duration-300 ease-in-out",
+      "absolute top-0 right-0 h-full w-[450px] border-l border-[var(--border)] bg-[var(--surface)]/98 backdrop-blur-md z-[60] flex flex-col shadow-2xl transition-all duration-300 ease-in-out",
       isOpen ? "translate-x-0 opacity-100 visible" : "translate-x-full opacity-0 invisible"
     )}>
       {/* Header */}
@@ -79,13 +109,28 @@ export function PlanDocPanel({ isOpen, onClose, planDoc, isLoading, onImplement,
             {planDoc?.title || "Architecture Plan"}
           </span>
         </div>
-        <button onClick={onClose} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors">
-          <X className="size-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          {planDoc && !planDoc.is_chat && !isLoading && (
+            <button
+              onClick={() => isEditing ? handleSave() : setIsEditing(true)}
+              disabled={isSaving}
+              className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold text-[var(--primary-accent)] hover:bg-[var(--primary-accent)]/10 px-2 py-1 rounded transition-colors disabled:opacity-50"
+            >
+              {isEditing ? (
+                <>{isSaving ? <Loader2 className="size-3 animate-spin" /> : <Save className="size-3" />} Save</>
+              ) : (
+                <><Edit3 className="size-3" /> Edit Plan</>
+              )}
+            </button>
+          )}
+          <button onClick={onClose} className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors ml-2">
+            <X className="size-4" />
+          </button>
+        </div>
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto scrollbar-none">
+      <div className="flex-1 overflow-y-auto scrollbar-none relative">
         {isLoading && (
           <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
             <div className="relative">
@@ -101,48 +146,33 @@ export function PlanDocPanel({ isOpen, onClose, planDoc, isLoading, onImplement,
         )}
 
         {!isLoading && planDoc && (
-          <div className="p-4 space-y-4">
-            {/* Summary */}
-            {planDoc.summary && (
-              <div className="p-3 rounded-xl bg-[var(--primary-accent)]/5 border border-[var(--primary-accent)]/10">
-                <p className="text-[11px] text-[var(--muted-foreground)] leading-relaxed">{planDoc.summary}</p>
-              </div>
-            )}
-
-            {/* Blocks */}
-            {planDoc.blocks.length > 0 && (
-              <div>
-                <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--muted-foreground)] mb-2">
-                  {planDoc.blocks.length} Modules Planned
-                </p>
-                <div className="flex flex-col gap-1.5">
-                  {planDoc.blocks.map((block, i) => (
-                    <div key={`${block.id}-${i}`} className="flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-[var(--muted)] transition-colors group border border-transparent hover:border-[var(--border)]">
-                      <div className="mt-0.5">
-                        {block.status === "done" && <CheckCircle2 className="size-3.5 text-emerald-500" />}
-                        {block.status === "running" && <Loader2 className="size-3.5 text-[var(--primary-accent)] animate-spin" />}
-                        {block.status === "idle" && <CircleDashed className="size-3.5 text-[var(--muted-foreground)]" />}
-                      </div>
-                      <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                        <span className="text-[11px] font-semibold text-[var(--foreground)] truncate">{block.title}</span>
-                        <span className="text-[9px] font-mono text-[var(--primary-accent)]/70 truncate">{block.stack}</span>
-                        {block.description && (
-                          <span className="text-[10px] text-[var(--muted-foreground)] line-clamp-2">{block.description}</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Markdown content */}
-            {planDoc.markdown && (
-              <div className="border-t border-[var(--border)] pt-4">
-                <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--muted-foreground)] mb-3">
-                  {planDoc.is_chat ? "Assistant Response" : "Full Plan"}
-                </p>
-                <MarkdownRenderer content={planDoc.markdown} />
+          <div className="p-4 space-y-6">
+            {isEditing ? (
+              <textarea
+                value={editedMarkdown}
+                onChange={(e) => setEditedMarkdown(e.target.value)}
+                className="w-full h-[600px] p-3 text-xs font-mono bg-black/40 border border-[var(--border)] rounded-md text-[var(--foreground)] focus:outline-none focus:border-[var(--primary-accent)] transition-colors resize-none"
+              />
+            ) : (
+              <div className="prose prose-invert prose-sm max-w-none text-xs text-[var(--muted-foreground)] prose-headings:text-[var(--foreground)] prose-a:text-[var(--primary-accent)] prose-strong:text-[var(--foreground)] prose-code:text-[var(--primary-accent)] prose-code:bg-[var(--primary-accent)]/10 prose-code:px-1 prose-code:rounded">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    code({ node, inline, className, children, ...props }: any) {
+                      const match = /language-(\w+)/.exec(className || "");
+                      if (!inline && match && match[1] === "mermaid") {
+                        return <MermaidDiagram chart={String(children).replace(/\n$/, "")} />;
+                      }
+                      return (
+                        <code className={className} {...props}>
+                          {children}
+                        </code>
+                      );
+                    }
+                  }}
+                >
+                  {editedMarkdown || planDoc.markdown}
+                </ReactMarkdown>
               </div>
             )}
           </div>
@@ -158,13 +188,22 @@ export function PlanDocPanel({ isOpen, onClose, planDoc, isLoading, onImplement,
 
       {/* Footer — Implement button */}
       {planDoc && !planDoc.is_chat && !isLoading && (
-        <div className="p-4 border-t border-[var(--border)]">
+        <div className="p-4 border-t border-[var(--border)] bg-[var(--surface)]">
+          {!validation.valid && (
+            <div className="flex items-start gap-2 mb-3 p-2 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-500">
+              <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-semibold">Plan Incomplete</span>
+                <span className="text-[10px] opacity-80">Missing sections: {validation.missing.join(", ")}</span>
+              </div>
+            </div>
+          )}
           <button
             onClick={onImplement}
-            disabled={isImplementing}
+            disabled={isImplementing || !validation.valid || isEditing}
             className={cn(
               "w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-semibold text-sm transition-all duration-200",
-              isImplementing
+              isImplementing || !validation.valid || isEditing
                 ? "bg-[var(--primary-accent)]/20 text-[var(--primary-accent)]/60 cursor-not-allowed"
                 : "bg-[var(--primary-accent)] text-white hover:opacity-90 active:scale-[0.98] shadow-lg shadow-[var(--primary-accent)]/20"
             )}

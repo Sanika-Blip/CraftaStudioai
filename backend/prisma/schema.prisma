@@ -9,6 +9,7 @@ datasource db {
 enum RunStatus {
   pending
   running
+  awaiting_confirm
   done
   failed
 }
@@ -130,6 +131,7 @@ model Project {
   id        String   @id @default(uuid())
   teamId    String
   name      String
+  planDoc   String?  @db.Text
   document  ProjectDocument?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

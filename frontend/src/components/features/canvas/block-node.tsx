@@ -20,6 +20,7 @@ interface BlockNodeProps {
 const STATUS_CONFIG = {
   idle:    { color: "#f59e0b", glow: "rgba(245,158,11,0.5)",  pulse: false, label: "IDLE"    },
   running: { color: "#10b981", glow: "rgba(16,185,129,0.6)",  pulse: true,  label: "RUNNING" },
+  awaiting_confirm: { color: "#3b82f6", glow: "rgba(59,130,246,0.6)", pulse: true, label: "AWAITING" },
   done:    { color: "#8b5cf6", glow: "rgba(139,92,246,0.5)",  pulse: false, label: "DONE"    },
   success: { color: "#22c55e", glow: "rgba(34,197,94,0.5)",   pulse: false, label: "SUCCESS" },
   error:   { color: "#ef4444", glow: "rgba(239,68,68,0.6)",   pulse: true,  label: "ERROR"   },

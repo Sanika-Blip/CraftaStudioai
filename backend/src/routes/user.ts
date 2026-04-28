@@ -17,16 +17,16 @@ export async function userRoutes(app: FastifyInstance) {
     const clerkId = req.user.sub;
     const user = await getOrCreateUser(clerkId);
 
-    const teams = await prisma.team.findMany({
-      where: {
-        members: {
-          some: {
-            userId: user.id
-          }
+    const memberships = await prisma.teamMember.findMany({
+      where: { userId: user.id },
+      include: {
+        team: {
+          include: { projects: true }
         }
       },
-      include: { projects: true },
     });
+
+    const teams = memberships.map(m => ({ ...m.team, role: m.role }));
 
     return { user, teams };
   });
