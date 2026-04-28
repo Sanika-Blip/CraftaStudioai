@@ -23,12 +23,13 @@ export default function CraftaStudio() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isChatSidebarOpen, setIsChatSidebarOpen] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState<string>("Untitled Project");
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
-  // ✅ Track whether any code has been generated — controls Export & Share visibility
+  // Track whether any code has been generated — controls Export & Share visibility
   const [hasGeneratedOutput, setHasGeneratedOutput] = useState(false);
 
-  // ✅ Track selected run from history — passed to CodeTab
+  // Track selected run from history — passed to CodeTab
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -55,27 +56,40 @@ export default function CraftaStudio() {
         });
         clearTimeout(timeout);
         if (!res.ok) return;
-        const user = await res.json();
+        const user = await res.json() as { teams?: { projects?: { id: string; name: string }[] }[] };
         const firstProject = user?.teams?.[0]?.projects?.[0];
-        if (firstProject) setProjectId(firstProject.id);
-      } catch (err: any) {
-        if (err?.name === "AbortError") return;
+        if (firstProject) {
+          setProjectId(firstProject.id);
+          setProjectName(firstProject.name);
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") return;
         console.error("[Dashboard] Failed to sync user:", err);
       }
     };
     syncUser();
-  }, [isLoaded, isSignedIn]);
+  }, [isLoaded, isSignedIn, getToken]);
 
-  // ✅ Called by CanvasTab when generation completes
+  // Called by MainSidebar when user clicks a project
+  const handleProjectSwitch = useCallback((id: string, name: string) => {
+    setProjectId(id);
+    setProjectName(name);
+    setHasGeneratedOutput(false);
+    setSelectedRunId(null);
+    setIsPlanDocOpen(false);
+    setActiveTab("canvas");
+  }, []);
+
+  // Called by CanvasTab when generation completes
   const handleGenerationComplete = useCallback(() => {
     setHasGeneratedOutput(true);
   }, []);
 
-  // ✅ Called by HistoryPanel when user loads a past run
+  // Called by HistoryPanel when user loads a past run
   const handleSelectRun = useCallback((runId: string) => {
     setSelectedRunId(runId);
     setHasGeneratedOutput(true);
-    setActiveTab("code"); // Switch to code tab to show the output
+    setActiveTab("code");
   }, []);
 
   if (!isLoaded || !isSignedIn) {
@@ -89,6 +103,8 @@ export default function CraftaStudio() {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <MainSidebar
+        activeProjectId={projectId}
+        onProjectSwitch={handleProjectSwitch}
         onOpenSettings={(tab) => {
           localStorage.setItem("craftastudio-settings-tab", tab);
           setIsSettingsOpen(true);
@@ -108,7 +124,10 @@ export default function CraftaStudio() {
           setIsChatSidebarOpen={setIsChatSidebarOpen}
         />
         <main className="flex-1 relative overflow-hidden">
-          {activeTab === "canvas" && (
+          {/* CanvasTab is ALWAYS mounted — never unmounted on tab switch.
+              Unmounting destroys planDoc, blocks, runId, isImplementing state.
+              Use CSS visibility to hide/show instead. */}
+          <div className={activeTab === "canvas" ? "block w-full h-full" : "hidden"}>
             <CanvasTab
               isPlanDocOpen={isPlanDocOpen}
               setIsPlanDocOpen={setIsPlanDocOpen}
@@ -119,18 +138,21 @@ export default function CraftaStudio() {
               isChatSidebarOpen={isChatSidebarOpen}
               setIsChatSidebarOpen={setIsChatSidebarOpen}
               projectId={projectId}
+              projectName={projectName}
+              onProjectNameChange={setProjectName}
               onGenerationComplete={handleGenerationComplete}
             />
-          )}
-          {activeTab === "code" && (
+          </div>
+          <div className={activeTab === "code" ? "block w-full h-full" : "hidden"}>
             <CodeTab
               projectId={projectId}
             />
-          )}
-          {activeTab === "preview" && <PreviewTab />}
+          </div>
+          <div className={activeTab === "preview" ? "block w-full h-full" : "hidden"}>
+            <PreviewTab />
+          </div>
         </main>
 
-        {/* ✅ Export & Share only visible when output exists */}
         <StatusBar hasGeneratedOutput={hasGeneratedOutput} />
       </div>
 
@@ -139,7 +161,6 @@ export default function CraftaStudio() {
         onClose={() => setIsSettingsOpen(false)}
       />
 
-      {/* ✅ History panel — per user, no data leakage */}
       <HistoryPanel
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
