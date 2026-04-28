@@ -51,4 +51,48 @@ export async function projectsRoutes(app: FastifyInstance) {
     await prisma.project.delete({ where: { id } });
     return reply.code(204).send();
   });
+
+  /** GET /api/projects/:id/plan */
+  app.get("/:id/plan", { preHandler: verifyClerk }, async (req: any, reply) => {
+    const { id } = req.params as { id: string };
+    const project = await prisma.project.findUnique({ where: { id }, select: { planDoc: true } });
+    if (!project) return reply.code(404).send({ error: "Project not found" });
+    return { planDoc: project.planDoc };
+  });
+
+  /** PUT /api/projects/:id/plan */
+  app.put("/:id/plan", { preHandler: verifyClerk }, async (req: any, reply) => {
+    const { id } = req.params as { id: string };
+    const { content } = req.body as { content: string };
+    const project = await prisma.project.update({
+      where: { id },
+      data: { planDoc: content },
+      select: { planDoc: true }
+    });
+    return { planDoc: project.planDoc };
+  });
+
+  /** GET /api/projects/:id/plan/validate */
+  app.get("/:id/plan/validate", { preHandler: verifyClerk }, async (req: any, reply) => {
+    const { id } = req.params as { id: string };
+    const project = await prisma.project.findUnique({ where: { id }, select: { planDoc: true } });
+    if (!project) return reply.code(404).send({ error: "Project not found" });
+
+    const doc = project.planDoc || "";
+    const missing: string[] = [];
+
+    if (!doc.includes("## Overview")) missing.push("Overview");
+    if (!doc.includes("## Architecture")) missing.push("Architecture");
+    if (!doc.includes("## Blocks") && !doc.includes("| Block ID |")) missing.push("Blocks Table");
+    if (!doc.includes("## Pages")) missing.push("Pages");
+    if (!doc.includes("## Data Models")) missing.push("Data Models");
+    if (!doc.includes("## API Endpoints")) missing.push("API Endpoints");
+    if (!doc.includes("## Build Order")) missing.push("Build Order");
+
+    if (missing.length > 0) {
+      return reply.code(400).send({ valid: false, missing });
+    }
+
+    return { valid: true, missing: [] };
+  });
 }

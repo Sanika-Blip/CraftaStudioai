@@ -34,7 +34,7 @@ interface CanvasTabProps {
   isChatSidebarOpen?: boolean;
   setIsChatSidebarOpen?: (open: boolean) => void;
   projectId?: string | null;
-  onGenerationComplete?: () => void; // ✅ new prop
+  onGenerationComplete?: () => void;
 }
 
 const MOCK_PAYLOAD: CanvasJSONPayload = {
@@ -64,48 +64,71 @@ function CanvasTabInner({
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
   const [payload, setPayload] = useState<CanvasJSONPayload>(isDemoMode ? MOCK_PAYLOAD : { blocks: [] });
   const [selectedBlockInfo, setSelectedBlockInfo] = useState<any>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
   const [focusedBlock, setFocusedBlock] = useState<Node | null>(null);
   const [isChatMoved, setIsChatMoved] = useState(false);
   const [projectName, setProjectName] = useState("Alpha Project Alpha");
+  const lastPromptRef = useRef<string>("");
+  const wsRef = useRef<WebSocket | null>(null);
+
   const [planDoc, setPlanDoc] = useState<any>(null);
   const [isPlanning, setIsPlanning] = useState(false);
   const [isImplementing, setIsImplementing] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [codeViewerBlock, setCodeViewerBlock] = useState<{ id: string; title: string; stack?: string } | null>(null);
   const [mounted, setMounted] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
   // WebSocket for live block updates
   useEffect(() => {
     if (!projectId || isDemoMode) return;
-    const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004").replace("http", "ws")}/ws?projectId=${projectId}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-    ws.onmessage = (evt) => {
-      try {
-        const msg = JSON.parse(evt.data);
-        if (msg.event === "block:status_update") {
-          const { blockId, status, output } = msg;
-          setPayload(prev => ({
-            blocks: prev.blocks.map(b => b.id === blockId ? { ...b, status, outputCode: output } : b)
-          }));
-        }
-        if (msg.event === "workflow:completed") {
-          setIsImplementing(false);
-          onGenerationComplete?.(); // ✅ trigger Export/Share visibility
-        }
-        if (msg.event === "workflow:failed") {
-          setIsImplementing(false);
-        }
-      } catch {}
+    const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004").replace("http", "ws")}/api/ws/${projectId}`;
+    
+    let ws: WebSocket;
+    const connect = () => {
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+      ws.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          if (msg.event === "block:status_update") {
+            const { blockId, status, output } = msg;
+
+            if (status === "awaiting_confirm") {
+              setActiveTab("code");
+            }
+
+            setPayload(prev => {
+              const updated = prev.blocks.map(b => b.id === blockId ? { ...b, status, outputCode: output } : b);
+              const allDone = updated.every(b => b.status === "done" || b.status === "failed");
+              if (allDone) {
+                setIsImplementing(false);
+                onGenerationComplete?.();
+              }
+              return { blocks: updated };
+            });
+          }
+          if (msg.event === "workflow:completed" || msg.event === "workflow:failed") {
+            setIsImplementing(false);
+          }
+        } catch {}
+      };
+      ws.onerror = () => console.warn("[WS] Connection error — will retry");
+      ws.onclose = () => {
+        setTimeout(connect, 2000);
+      };
     };
-    ws.onerror = () => console.warn("[WS] Connection error");
-    return () => { ws.close(); };
-  }, [projectId, isDemoMode, onGenerationComplete]);
+
+    connect();
+    return () => { 
+      ws?.close(); 
+      wsRef.current = null;
+    };
+  }, [projectId, isDemoMode, onGenerationComplete, setActiveTab]);
 
   // Fetch existing blocks
   useEffect(() => {
@@ -163,6 +186,7 @@ function CanvasTabInner({
     }
 
     try {
+      lastPromptRef.current = msg;
       const token = await getToken();
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
       const res = await fetch(`${apiUrl}/api/plan`, {
@@ -192,7 +216,7 @@ function CanvasTabInner({
       setTimeout(() => {
         setPayload(prev => ({ blocks: prev.blocks.map(b => ({ ...b, status: "done" })) }));
         setIsImplementing(false);
-        onGenerationComplete?.(); // ✅ demo mode also triggers
+        onGenerationComplete?.();
       }, 3000);
       return;
     }
@@ -202,33 +226,17 @@ function CanvasTabInner({
     try {
       const token = await getToken();
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
+      const prompt = lastPromptRef.current || planDoc.summary || planDoc.title || "Build this project";
+      
       const res = await fetch(`${apiUrl}/api/workflow/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ projectId, prompt: planDoc.summary || planDoc.title }),
+        body: JSON.stringify({ projectId, prompt }),
       });
       if (res.ok) {
         const data = await res.json();
         setCurrentRunId(data.runId ?? null);
-        setPayload(prev => ({ blocks: prev.blocks.map(b => ({ ...b, status: "running" })) }));
-        // WebSocket will handle completion and call onGenerationComplete
-        // Fallback poll
-        const pollInterval = setInterval(async () => {
-          const pollRes = await fetch(`${apiUrl}/api/blocks?projectId=${projectId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (pollRes.ok) {
-            const blocks = await pollRes.json();
-            const allDone = blocks.every((b: any) => b.blockJson?.status === "done" || b.blockJson?.status === "failed");
-            if (allDone && blocks.length > 0) {
-              clearInterval(pollInterval);
-              setPayload({ blocks: blocks.map((b: any) => ({ id: b.id, type: b.blockType, title: b.blockJson?.title || "Module", stack: b.blockJson?.stack || "", status: b.blockJson?.status || "done", subBlocks: b.blockJson?.subBlocks || [] })) });
-              setIsImplementing(false);
-              onGenerationComplete?.();
-            }
-          }
-        }, 3000);
-        setTimeout(() => { clearInterval(pollInterval); setIsImplementing(false); }, 120_000);
+        console.log(`[CanvasTab] Workflow started: runId=${data.runId}, blocks=${data.blockCount}`);
       } else {
         setIsImplementing(false);
       }
@@ -237,6 +245,25 @@ function CanvasTabInner({
       setIsImplementing(false);
     }
   }, [planDoc, isImplementing, isDemoMode, projectId, getToken, onGenerationComplete]);
+
+  const handleProceed = async (blockId: string) => {
+    if (!currentRunId || !projectId) return;
+    setIsConfirming(true);
+    try {
+      const token = await getToken();
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
+      const res = await fetch(`${apiUrl}/api/workflow/confirm/${blockId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ projectId, runId: currentRunId }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+    } catch (err) {
+      console.error("[CanvasTab] Proceed failed:", err);
+    } finally {
+      setIsConfirming(false);
+    }
+  };
 
   const refreshLayout = useCallback(() => {
     const { nodes: newNodes, edges: newEdges } = calculateCircularLayout(payload, { x: -210, y: -80 });
@@ -279,8 +306,7 @@ function CanvasTabInner({
       cycle();
     }
     return () => { if (cycleTimerRef.current) clearTimeout(cycleTimerRef.current); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payload]);
+  }, [payload, startNode, finishNode]);
 
   const onNodeClick = (_: any, node: Node) => { if (node.type === "block") setFocusedBlock(node); };
 
@@ -292,6 +318,8 @@ function CanvasTabInner({
       </div>
     );
   }
+
+  const blockAwaitingConfirm = payload.blocks.find(b => b.status === "awaiting_confirm");
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-[var(--background)]">
@@ -362,6 +390,32 @@ function CanvasTabInner({
       )}
 
       <BlockFocusOverlay block={focusedBlock} onClose={() => setFocusedBlock(null)} onSubblockClick={() => { setFocusedBlock(null); setActiveTab("code"); }} />
+
+      {blockAwaitingConfirm && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50">
+          <div className="bg-[var(--surface)] border border-[var(--border)] shadow-2xl p-4 rounded-2xl flex items-center gap-6 backdrop-blur-xl animate-in slide-in-from-bottom-10 fade-in duration-300">
+            <div className="flex flex-col">
+              <span className="text-sm font-bold text-[var(--foreground)]">Code Generated</span>
+              <span className="text-xs text-[var(--muted-foreground)]">Please review the code. Click Proceed to generate next module.</span>
+            </div>
+            <button
+              onClick={() => handleProceed(blockAwaitingConfirm.id)}
+              disabled={isConfirming}
+              className="px-6 py-2 rounded-xl bg-[var(--primary-accent)] text-white font-semibold text-sm shadow-[0_0_15px_rgba(139,92,246,0.5)] hover:shadow-[0_0_25px_rgba(139,92,246,0.6)] transition-all disabled:opacity-50 flex items-center gap-2"
+            >
+              {isConfirming ? (
+                <>
+                  <div className="size-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  Proceeding...
+                </>
+              ) : (
+                "Proceed to Next Block"
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
       <CodeViewerModal isOpen={!!codeViewerBlock} onClose={() => setCodeViewerBlock(null)} blockId={codeViewerBlock?.id ?? null} blockTitle={codeViewerBlock?.title ?? ""} blockStack={codeViewerBlock?.stack} projectId={projectId ?? null} runId={currentRunId} />
     </div>
   );

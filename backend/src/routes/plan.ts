@@ -50,7 +50,11 @@ export async function planRoutes(app: FastifyInstance) {
       const projectId = parsed.data.projectId ?? null
 
       if (projectId && plan.blocks?.length > 0) {
-        const project = await prisma.project.findUnique({ where: { id: projectId } })
+        // Also save the planDoc to the project
+        const project = await prisma.project.update({
+          where: { id: projectId },
+          data: { planDoc: plan.markdown }
+        })
         if (project) {
           // Delete old blocks for this project so we always get fresh ones
           await prisma.block.deleteMany({ where: { projectId } })

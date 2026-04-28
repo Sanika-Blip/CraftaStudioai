@@ -5,7 +5,7 @@ import { broadcastToProject } from '../ws/wsManager'
 
 const connection = new Redis(process.env.REDIS_URL!, {
   maxRetriesPerRequest: null,
-  tls: {},
+  tls: process.env.REDIS_URL?.startsWith('rediss://') ? {} : undefined,
   family: 4,
 })
 
