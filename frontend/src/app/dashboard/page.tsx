@@ -60,15 +60,11 @@ export default function CraftaStudio() {
 
         clearTimeout(timeout);
         if (!res.ok) return;
-
         const user = await res.json() as { teams?: { projects?: { id: string; name: string }[] }[] };
         const firstProject = user?.teams?.[0]?.projects?.[0];
-
         if (firstProject) {
           setProjectId(firstProject.id);
           setProjectName(firstProject.name);
-        } else {
-          console.warn("[Dashboard] No project found — user may be new");
         }
       } catch (err: unknown) {
         if (err instanceof Error && err.name === "AbortError") return;
@@ -77,7 +73,7 @@ export default function CraftaStudio() {
     };
 
     syncUser();
-  }, [isLoaded, isSignedIn]);
+  }, [isLoaded, isSignedIn, getToken]);
 
   // Called by MainSidebar when user clicks a project
   const handleProjectSwitch = useCallback((id: string, name: string) => {
@@ -112,6 +108,8 @@ export default function CraftaStudio() {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <MainSidebar
+        activeProjectId={projectId}
+        onProjectSwitch={handleProjectSwitch}
         onOpenSettings={(tab) => {
           localStorage.setItem("craftastudio-settings-tab", tab);
           setIsSettingsOpen(true);
@@ -150,11 +148,11 @@ export default function CraftaStudio() {
               onGenerationComplete={handleGenerationComplete}
             />
           </div>
-
           <div className={activeTab === "code" ? "block w-full h-full" : "hidden"}>
-            <CodeTab projectId={projectId} />
+            <CodeTab
+              projectId={projectId}
+            />
           </div>
-
           <div className={activeTab === "preview" ? "block w-full h-full" : "hidden"}>
             <PreviewTab />
           </div>
