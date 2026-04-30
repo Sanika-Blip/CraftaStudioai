@@ -39,7 +39,7 @@ interface CanvasTabProps {
   onRunIdChange?: (runId: string | null) => void;
 }
 
-type BlockStatus = "done" | "failed" | "pending" | "running" | "awaiting_confirm";
+type BlockStatus = "done" | "failed" | "pending" | "running" | "awaiting_confirm" | "idle" | "error";
 
 interface BlockOutput {
   id: string;
@@ -106,7 +106,7 @@ const MOCK_PAYLOAD: CanvasJSONPayload = {
 function CanvasTabInner({
   isPlanDocOpen, setIsPlanDocOpen, setActiveTab,
   isChatSidebarOpen, setIsChatSidebarOpen, projectId,
-  projectName: projectNameProp, onProjectNameChange, onGenerationComplete,
+  projectName: projectNameProp, onProjectNameChange, onGenerationComplete, onRunIdChange,
 }: CanvasTabProps) {
   const { fitView } = useReactFlow();
   const { startNode, finishNode } = useEdgeHighlight();
