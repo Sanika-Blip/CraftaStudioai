@@ -134,6 +134,9 @@ export default function CraftaStudio() {
         />
 
         <main className="flex-1 relative overflow-hidden">
+          {/* CanvasTab is ALWAYS mounted - never unmounted on tab switch.
+              Unmounting destroys planDoc, blocks, runId, isImplementing state.
+              Use CSS visibility to hide/show instead. */}
           <div className={activeTab === "canvas" ? "block w-full h-full" : "hidden"}>
             <CanvasTab
               isPlanDocOpen={isPlanDocOpen}
