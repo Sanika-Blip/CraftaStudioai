@@ -116,7 +116,6 @@ export default function CraftaStudio() {
           setIsSettingsOpen(true);
         }}
         onHistoryClick={() => setIsHistoryOpen(true)}
-        onProjectSelect={handleProjectSwitch}
       />
 
       <div className="flex flex-col flex-1 relative overflow-hidden">

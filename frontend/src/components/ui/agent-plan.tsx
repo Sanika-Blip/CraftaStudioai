@@ -96,7 +96,7 @@ export default function Plan({ externalTasks }: { externalTasks?: Task[] }) {
     visible: { 
       opacity: 1, y: 0,
       transition: { 
-        type: prefersReducedMotion ? "tween" : "spring", 
+        type: (prefersReducedMotion ? "tween" : "spring") as any, 
         stiffness: 500, damping: 30,
         duration: prefersReducedMotion ? 0.2 : undefined
       }
@@ -110,10 +110,10 @@ export default function Plan({ externalTasks }: { externalTasks?: Task[] }) {
       height: "auto", opacity: 1, overflow: "visible",
       transition: { 
         duration: 0.25, staggerChildren: prefersReducedMotion ? 0 : 0.05,
-        when: "beforeChildren", ease: [0.2, 0.65, 0.3, 0.9]
+        when: "beforeChildren", ease: [0.2, 0.65, 0.3, 0.9] as any
       }
     },
-    exit: { height: 0, opacity: 0, overflow: "hidden", transition: { duration: 0.2, ease: [0.2, 0.65, 0.3, 0.9] } }
+    exit: { height: 0, opacity: 0, overflow: "hidden", transition: { duration: 0.2, ease: [0.2, 0.65, 0.3, 0.9] as any } }
   };
 
   const subtaskVariants = {
@@ -121,7 +121,7 @@ export default function Plan({ externalTasks }: { externalTasks?: Task[] }) {
     visible: { 
       opacity: 1, x: 0,
       transition: { 
-        type: prefersReducedMotion ? "tween" : "spring", 
+        type: (prefersReducedMotion ? "tween" : "spring") as any, 
         stiffness: 500, damping: 25,
         duration: prefersReducedMotion ? 0.2 : undefined
       }
@@ -133,7 +133,7 @@ export default function Plan({ externalTasks }: { externalTasks?: Task[] }) {
     initial: { scale: 1 },
     animate: { 
       scale: prefersReducedMotion ? 1 : [1, 1.08, 1],
-      transition: { duration: 0.35, ease: [0.34, 1.56, 0.64, 1] }
+      transition: { duration: 0.35, ease: [0.34, 1.56, 0.64, 1] as any }
     }
   };
 
