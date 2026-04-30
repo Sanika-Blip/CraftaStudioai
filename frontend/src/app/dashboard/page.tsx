@@ -23,6 +23,7 @@ export default function CraftaStudio() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isChatSidebarOpen, setIsChatSidebarOpen] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const [hasGeneratedOutput, setHasGeneratedOutput] = useState(false);
@@ -57,11 +58,12 @@ export default function CraftaStudio() {
         clearTimeout(timeout);
         if (!res.ok) return;
 
-        const user = await res.json();
+        const user = await res.json() as { teams?: { projects?: { id: string; name: string }[] }[] };
         const firstProject = user?.teams?.[0]?.projects?.[0];
 
         if (firstProject) {
           setProjectId(firstProject.id);
+          setProjectName(firstProject.name);
         } else {
           console.warn("[Dashboard] No project found — user may be new");
         }
@@ -74,10 +76,22 @@ export default function CraftaStudio() {
     syncUser();
   }, [isLoaded, isSignedIn]);
 
+  // Called by MainSidebar when user clicks a project
+  const handleProjectSwitch = useCallback((id: string, name: string) => {
+    setProjectId(id);
+    setProjectName(name);
+    setHasGeneratedOutput(false);
+    setSelectedRunId(null);
+    setIsPlanDocOpen(false);
+    setActiveTab("canvas");
+  }, []);
+
+  // Called by CanvasTab when generation completes
   const handleGenerationComplete = useCallback(() => {
     setHasGeneratedOutput(true);
   }, []);
 
+  // Called by HistoryPanel when user loads a past run
   const handleSelectRun = useCallback((runId: string) => {
     setSelectedRunId(runId);
     setHasGeneratedOutput(true);
@@ -100,6 +114,7 @@ export default function CraftaStudio() {
           setIsSettingsOpen(true);
         }}
         onHistoryClick={() => setIsHistoryOpen(true)}
+        onProjectSelect={handleProjectSwitch}
       />
 
       <div className="flex flex-col flex-1 relative overflow-hidden">
