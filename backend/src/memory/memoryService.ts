@@ -1,13 +1,5 @@
-/**
- * Steps 6-7: Deduplication + Merge → Storage
- *
- * IF key not exists → insert
- * IF same value    → increase confidence (max 1.0)
- * IF diff value    → override + version++
- */
-
 import prisma from '../lib/prisma'
-import { MemorySource } from '@prisma/client'
+import { MemoryType, Priority, MemorySource } from '@prisma/client'
 import { extractSignals, ExtractedSignal } from './memoryExtractor'
 
 // ── Upsert single signal ───────────────────────────────────────────────────────
@@ -20,45 +12,41 @@ export async function upsertMemory(
   })
 
   if (!existing) {
-    // INSERT — new signal
     await prisma.memory.create({
       data: {
         projectId,
         key: signal.key,
         value: { data: signal.value } as any,
-        type: signal.type,
+        entryType: signal.type,   // ← 'entryType' is the actual schema field, not 'type'
         priority: signal.priority,
         source: signal.source,
         confidence: 0.6,
         version: 1,
       },
     })
-    console.log(`[memory] INSERT key=${signal.key} value=${signal.value}`)
     return
   }
 
   const existingValue = (existing.value as any)?.data
-  const isSameValue = String(existingValue).toLowerCase() === String(signal.value).toLowerCase()
+  const isSameValue =
+    String(existingValue).toLowerCase() ===
+    String(signal.value).toLowerCase()
 
   if (isSameValue) {
-    // SAME VALUE → boost confidence (cap at 1.0)
-    const newConfidence = Math.min(existing.confidence + 0.1, 1.0)
     await prisma.memory.update({
       where: { projectId_key: { projectId, key: signal.key } },
       data: {
-        confidence: newConfidence,
+        confidence: Math.min(existing.confidence + 0.1, 1.0),
         usageCount: { increment: 1 },
         lastUsedAt: new Date(),
       },
     })
-    console.log(`[memory] BOOST key=${signal.key} confidence=${newConfidence.toFixed(2)}`)
   } else {
-    // DIFFERENT VALUE → override + version++
     await prisma.memory.update({
       where: { projectId_key: { projectId, key: signal.key } },
       data: {
         value: { data: signal.value } as any,
-        type: signal.type,
+        entryType: signal.type,   // ← correct field name
         priority: signal.priority,
         source: signal.source,
         confidence: 0.6,
@@ -67,66 +55,98 @@ export async function upsertMemory(
         updatedAt: new Date(),
       },
     })
-    console.log(`[memory] OVERRIDE key=${signal.key} old=${existingValue} new=${signal.value}`)
   }
 }
 
-// ── Process a full prompt string ───────────────────────────────────────────────
+// ── Process prompt ─────────────────────────────────────────────────────────────
 export async function processAndStoreMemory(
   projectId: string,
   input: string,
-  source: MemorySource = 'user',
+  source: MemorySource = MemorySource.user,
 ): Promise<ExtractedSignal[]> {
   const signals = extractSignals(input, source)
 
-  if (signals.length === 0) {
-    console.log(`[memory] No actionable signals found in input`)
-    return []
-  }
-
-  console.log(`[memory] Processing ${signals.length} signals for project ${projectId}`)
+  if (signals.length === 0) return []
 
   await Promise.all(signals.map(s => upsertMemory(projectId, s)))
 
   return signals
 }
 
-// ── Capture signals from block output (Step 11: Post-Execution Learning) ───────
+// ── Capture signals from generated code ────────────────────────────────────────
 export async function captureOutputSignals(
   projectId: string,
   outputCode: string,
   blockType: string,
 ): Promise<void> {
-  // Infer signals from generated code
   const inferredSignals: ExtractedSignal[] = []
 
   if (/prisma/i.test(outputCode)) {
     inferredSignals.push({
-      key: 'orm', value: 'prisma',
-      type: 'architecture_decision', priority: 'high', source: 'inferred',
+      key: 'orm',
+      value: 'prisma',
+      type: MemoryType.decision,
+      priority: Priority.high,
+      source: MemorySource.ai_agent,
     })
   }
+
   if (/fastify/i.test(outputCode)) {
     inferredSignals.push({
-      key: 'framework', value: 'fastify',
-      type: 'architecture_decision', priority: 'high', source: 'inferred',
+      key: 'framework',
+      value: 'fastify',
+      type: MemoryType.decision,
+      priority: Priority.high,
+      source: MemorySource.ai_agent,
     })
   }
+
   if (/tailwind/i.test(outputCode)) {
     inferredSignals.push({
-      key: 'styling', value: 'tailwindcss',
-      type: 'preference', priority: 'medium', source: 'inferred',
+      key: 'styling',
+      value: 'tailwindcss',
+      type: MemoryType.preference,
+      priority: Priority.normal,
+      source: MemorySource.ai_agent,
     })
   }
-  if (/useState|useEffect|react/i.test(outputCode)) {
+
+  if (/react|useState|useEffect/i.test(outputCode)) {
     inferredSignals.push({
-      key: 'framework', value: 'react',
-      type: 'architecture_decision', priority: 'high', source: 'inferred',
+      key: 'framework',
+      value: 'react',
+      type: MemoryType.decision,
+      priority: Priority.high,
+      source: MemorySource.ai_agent,
+    })
+  }
+
+  // Lines 106, 112, 124 in the error — 'architecture_decision' and 'inferred'
+  // don't exist in the schema enums. Map them to valid values:
+  // 'architecture_decision' → MemoryType.decision
+  // 'inferred' → MemorySource.ai_agent
+  // 'medium' → Priority.normal
+  if (/next\.?js|react|vue|svelte/i.test(outputCode)) {
+    inferredSignals.push({
+      key: 'frontend_framework',
+      value: outputCode.match(/next\.?js|react|vue|svelte/i)?.[0]?.toLowerCase() ?? 'react',
+      type: MemoryType.decision,
+      priority: Priority.high,
+      source: MemorySource.ai_agent,
+    })
+  }
+
+  if (/postgresql|mongodb|mysql|sqlite/i.test(outputCode)) {
+    inferredSignals.push({
+      key: 'database',
+      value: outputCode.match(/postgresql|mongodb|mysql|sqlite/i)?.[0]?.toLowerCase() ?? 'postgresql',
+      type: MemoryType.decision,
+      priority: Priority.normal,
+      source: MemorySource.ai_agent,
     })
   }
 
   if (inferredSignals.length > 0) {
-    console.log(`[memory] Capturing ${inferredSignals.length} inferred signals from ${blockType} output`)
     await Promise.all(inferredSignals.map(s => upsertMemory(projectId, s)))
   }
 }

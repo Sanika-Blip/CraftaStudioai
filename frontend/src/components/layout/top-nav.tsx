@@ -1,6 +1,6 @@
 "use client";
 
-import { Play, Sun, Moon, LayoutGrid, Code, Settings, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Play, Sun, Moon, LayoutGrid, Code, Settings, PanelRightClose, PanelRightOpen, FileText } from "lucide-react";
 import { UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
@@ -110,18 +110,26 @@ export function TopNav({
 
       {/* ── Right: Meta + Controls ── */}
       <div className="flex items-center gap-4">
-        {/* Sync / Region info */}
+        {/* Panel controls */}
         <div className="hidden xl:flex items-center gap-5 border-r border-[var(--border)] pr-4">
-          <span className="text-[10px] font-bold tracking-[0.2em] text-[var(--muted-foreground)] uppercase">
-            Last Sync: 2m ago
-          </span>
-          <span className="text-[10px] font-bold tracking-[0.2em] text-[var(--muted-foreground)] uppercase">
-            Region: US-EAST-1
-          </span>
 
           {/* ── Panel Toggle Button ── */}
           {activeTab === "canvas" && setIsChatSidebarOpen && (
-            <div className="relative">
+            <div className="relative flex items-center gap-2">
+              <button
+                onClick={() => setIsPlanDocOpen(!isPlanDocOpen)}
+                className={cn(
+                  "flex items-center justify-center p-2 rounded-lg transition-all duration-200 border",
+                  isPlanDocOpen
+                    ? "text-purple-400 bg-purple-500/10 border-purple-500/30 shadow-[0_0_10px_rgba(168,85,247,0.2)]"
+                    : "text-[var(--muted-foreground)] bg-transparent border-transparent hover:text-purple-400 hover:bg-purple-500/10 hover:border-purple-500/20"
+                )}
+                aria-label={isPlanDocOpen ? "Close Plan" : "View Plan"}
+                title="View Architecture Plan"
+              >
+                <FileText className="size-4 transition-transform duration-300" />
+              </button>
+
               <button
                 id="panel-toggle-btn"
                 onClick={handlePanelToggle}

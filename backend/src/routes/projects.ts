@@ -34,16 +34,23 @@ export async function projectsRoutes(app: FastifyInstance) {
     return project;
   });
 
-  /** POST /api/projects */
-  app.post("/", { preHandler: verifyClerk }, async (req: any, reply) => {
-    const parsed = CreateProjectSchema.safeParse(req.body);
-    if (!parsed.success) return reply.code(422).send({ error: parsed.error.flatten() });
+ /** POST /api/projects */
+app.post("/", { preHandler: verifyClerk }, async (req: any, reply) => {
+  const parsed = CreateProjectSchema.safeParse(req.body);
+  if (!parsed.success) return reply.code(422).send({ error: parsed.error.flatten() });
 
-    const project = await prisma.project.create({
-      data: { name: parsed.data.name, teamId: parsed.data.teamId },
-    });
-    return reply.code(201).send(project);
+  const clerkId = req.user.sub;
+  const user = await getOrCreateUser(clerkId); // already imported
+
+  const project = await prisma.project.create({
+    data: {
+      name: parsed.data.name,
+      teamId: parsed.data.teamId,
+      createdByUserId: user.id, // 👈 add this
+    },
   });
+  return reply.code(201).send(project);
+});
 
   /** DELETE /api/projects/:id */
   app.delete("/:id", { preHandler: verifyClerk }, async (req: any, reply) => {
@@ -52,33 +59,55 @@ export async function projectsRoutes(app: FastifyInstance) {
     return reply.code(204).send();
   });
 
-  /** GET /api/projects/:id/plan */
-  app.get("/:id/plan", { preHandler: verifyClerk }, async (req: any, reply) => {
+  /** PATCH /api/projects/:id — rename a project */
+  app.patch("/:id", { preHandler: verifyClerk }, async (req: any, reply) => {
     const { id } = req.params as { id: string };
-    const project = await prisma.project.findUnique({ where: { id }, select: { planDoc: true } });
-    if (!project) return reply.code(404).send({ error: "Project not found" });
-    return { planDoc: project.planDoc };
+    const parsed = z.object({ name: z.string().min(1) }).safeParse(req.body);
+    if (!parsed.success) return reply.code(422).send({ error: parsed.error.flatten() });
+    const project = await prisma.project.update({
+      where: { id },
+      data: { name: parsed.data.name },
+    });
+    return project;
   });
 
+  /** GET /api/projects/:id/plan */
+  /** GET /api/projects/:id/plan — get saved plan document */
+app.get('/:id/plan', { preHandler: verifyClerk }, async (req: any, reply) => {
+  await getOrCreateUser(req.user.sub)
+  const { id: projectId } = req.params
+  const doc = await prisma.projectDocument.findUnique({ where: { projectId } })
+  if (!doc) return reply.code(404).send({ error: 'No plan found' })
+  try {
+    return reply.send(JSON.parse(doc.content))
+  } catch {
+    return reply.send({ content: doc.content })
+  }
+})
   /** PUT /api/projects/:id/plan */
   app.put("/:id/plan", { preHandler: verifyClerk }, async (req: any, reply) => {
     const { id } = req.params as { id: string };
     const { content } = req.body as { content: string };
-    const project = await prisma.project.update({
-      where: { id },
-      data: { planDoc: content },
-      select: { planDoc: true }
+
+    // Upsert the ProjectDocument record with the plan content
+    const doc = await prisma.projectDocument.upsert({
+      where: { projectId: id },
+      update: { content },
+      create: { projectId: id, content, status: 'pending' },
     });
-    return { planDoc: project.planDoc };
+    return { planDoc: doc.content };
   });
 
   /** GET /api/projects/:id/plan/validate */
   app.get("/:id/plan/validate", { preHandler: verifyClerk }, async (req: any, reply) => {
     const { id } = req.params as { id: string };
-    const project = await prisma.project.findUnique({ where: { id }, select: { planDoc: true } });
+    const project = await prisma.project.findUnique({
+      where: { id },
+      include: { document: true }
+    });
     if (!project) return reply.code(404).send({ error: "Project not found" });
 
-    const doc = project.planDoc || "";
+    const doc = project.document?.content || "";
     const missing: string[] = [];
 
     if (!doc.includes("## Overview")) missing.push("Overview");

@@ -71,3 +71,7 @@ shared/**/*.d.ts.map
 *.tar.gz
 .turbo/
 .vercel/
+
+# Reports
+craftastudio_e2e_report.md
+project_report.md

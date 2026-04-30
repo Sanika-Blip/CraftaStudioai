@@ -18,6 +18,8 @@ import { AuditLogSection } from "./sections/AuditLog";
 interface SettingsPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  activeProjectId?: string | null;
+  onProjectSelect?: (projectId: string, projectName: string) => void;
 }
 
 const STORAGE_KEY = "craftastudio-settings-tab";
@@ -64,11 +66,11 @@ function getLabel(id: TabId): string {
   return allItems.find((item) => item.id === id)?.label ?? id;
 }
 
-function renderSection(id: TabId) {
+function renderSection(id: TabId, activeProjectId?: string | null, onProjectSelect?: (projectId: string, projectName: string) => void) {
   switch (id) {
     case "account": return <AccountSection />;
     case "agent": return <AgentSection />;
-    case "projects": return <ProjectsSection />;
+    case "projects": return <ProjectsSection activeProjectId={activeProjectId} onProjectSelect={onProjectSelect} />;
     case "notifications": return <NotificationsSection />;
     case "models": return <ModelsSection />;
     case "customizations": return <CustomizationsSection />;
@@ -80,7 +82,7 @@ function renderSection(id: TabId) {
   }
 }
 
-export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
+export function SettingsPanel({ isOpen, onClose, activeProjectId, onProjectSelect }: SettingsPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>("account");
 
   // Load persisted tab from localStorage
@@ -130,7 +132,7 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300"
@@ -138,15 +140,15 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
       />
 
       {/* Panel */}
-      <div className="relative w-full max-w-5xl h-[80vh] bg-[var(--surface)] border border-[var(--border)] rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in duration-300 flex flex-col">
+      <div className="relative w-full max-w-5xl h-[80vh] bg-(--surface) border border-(--border) rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in duration-300 flex flex-col">
         {/* Header */}
-        <div className="h-14 border-b border-[var(--border)] flex items-center justify-center relative bg-[var(--surface)]">
-          <h2 className="text-sm font-medium text-[var(--muted-foreground)]">
+        <div className="h-14 border-b border-(--border) flex items-center justify-center relative bg-(--surface)">
+          <h2 className="text-sm font-medium text-(--muted-foreground)">
             Settings — {getLabel(activeTab)}
           </h2>
           <button
             onClick={onClose}
-            className="absolute right-4 p-2 hover:bg-[var(--foreground)]/5 rounded-lg transition-colors text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+            className="absolute right-4 p-2 hover:bg-(--foreground)/5 rounded-lg transition-colors text-(--muted-foreground) hover:text-(--foreground)"
           >
             <X className="size-4" />
           </button>
@@ -154,11 +156,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
         <div className="flex flex-1 overflow-hidden">
           {/* Sidebar */}
-          <div className="w-[240px] bg-[var(--background)] border-r border-[var(--border)] p-3 flex flex-col gap-6 overflow-y-auto">
+          <div className="w-60 bg-(--background) border-r border-(--border) p-3 flex flex-col gap-6 overflow-y-auto">
             {sidebarGroups.map((group, i) => (
               <div key={i} className="flex flex-col gap-0.5">
                 {group.title && (
-                  <span className="text-[10px] font-bold text-[var(--muted-foreground)] tracking-wider px-3 mb-2 uppercase opacity-60">
+                  <span className="text-[10px] font-bold text-(--muted-foreground) tracking-wider px-3 mb-2 uppercase opacity-60">
                     {group.title}
                   </span>
                 )}
@@ -172,11 +174,11 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                       className={cn(
                         "flex items-center gap-2.5 text-left px-3 py-2 rounded-lg text-sm transition-all",
                         isActive
-                          ? "bg-[var(--primary-accent)]/10 text-[var(--primary-accent)] font-medium"
-                          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--foreground)]/5"
+                          ? "bg-(--primary-accent)/10 text-(--primary-accent) font-medium"
+                          : "text-(--muted-foreground) hover:text-(--foreground) hover:bg-(--foreground)/5"
                       )}
                     >
-                      <Icon className={cn("size-4 shrink-0", isActive ? "text-[var(--primary-accent)]" : "")} />
+                      <Icon className={cn("size-4 shrink-0", isActive ? "text-(--primary-accent)" : "")} />
                       {item.label}
                     </button>
                   );
@@ -186,9 +188,9 @@ export function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           </div>
 
           {/* Main Content Area */}
-          <div className="flex-1 bg-[var(--surface)] p-8 overflow-y-auto">
+          <div className="flex-1 bg-(--surface) p-8 overflow-y-auto">
             <div key={activeTab} className="animate-in fade-in duration-200">
-              {renderSection(activeTab)}
+              {renderSection(activeTab, activeProjectId, onProjectSelect)}
             </div>
           </div>
         </div>

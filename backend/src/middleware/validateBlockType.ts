@@ -1,16 +1,14 @@
 // CraftaStudio — src/middleware/validateBlockType.ts
 import type { FastifyRequest, FastifyReply, HookHandlerDoneFunction } from 'fastify'
-import { BLOCK_TYPES, type BlockType } from '../../../shared/types/blocks'
+
+const BLOCK_TYPES = ['data', 'api', 'ui', 'service', 'integration', 'auth', 'job'] as const
+type BlockType = (typeof BLOCK_TYPES)[number]
 
 /**
  * Middleware — validates that `blockType` in the request body is a known BlockType.
  *
  * Use as a preHandler hook on POST/PATCH block routes:
  *   app.post('/', { preHandler: [validateBlockType] }, handler)
- *
- * @param req  - Incoming Fastify request
- * @param reply - Reply object for sending early error responses
- * @param done  - Done callback to continue to the next hook
  */
 export function validateBlockType(
   req: FastifyRequest,

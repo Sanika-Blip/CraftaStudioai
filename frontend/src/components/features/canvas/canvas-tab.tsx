@@ -35,6 +35,7 @@ interface CanvasTabProps {
   setIsChatSidebarOpen?: (open: boolean) => void;
   projectId?: string | null;
   onGenerationComplete?: () => void;
+  onRunIdChange?: (runId: string | null) => void;
 }
 
 const MOCK_PAYLOAD: CanvasJSONPayload = {
@@ -50,7 +51,7 @@ const MOCK_PAYLOAD: CanvasJSONPayload = {
 function CanvasTabInner({
   isPlanDocOpen, setIsPlanDocOpen, isPlanMode, setActiveTab,
   isPlanGenerated, setIsPlanGenerated, isChatSidebarOpen,
-  setIsChatSidebarOpen, projectId, onGenerationComplete
+  setIsChatSidebarOpen, projectId, onGenerationComplete, onRunIdChange
 }: CanvasTabProps) {
   const { fitView } = useReactFlow();
   const { startNode, finishNode } = useEdgeHighlight();
@@ -234,8 +235,9 @@ function CanvasTabInner({
         body: JSON.stringify({ projectId, prompt }),
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json() as { runId: string; blockCount: number };
         setCurrentRunId(data.runId ?? null);
+        onRunIdChange?.(data.runId ?? null);
         console.log(`[CanvasTab] Workflow started: runId=${data.runId}, blocks=${data.blockCount}`);
       } else {
         setIsImplementing(false);

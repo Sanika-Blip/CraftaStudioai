@@ -24,6 +24,7 @@ export default function CraftaStudio() {
   const [isChatSidebarOpen, setIsChatSidebarOpen] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState<string>("Untitled Project");
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   // Track whether any code has been generated — controls Export & Share visibility
@@ -96,7 +97,7 @@ export default function CraftaStudio() {
 
   // Called by HistoryPanel when user loads a past run
   const handleSelectRun = useCallback((runId: string) => {
-    setSelectedRunId(runId);
+    setCurrentRunId(runId);
     setHasGeneratedOutput(true);
     setActiveTab("code");
   }, []);
@@ -151,11 +152,15 @@ export default function CraftaStudio() {
               projectName={projectName}
               onProjectNameChange={setProjectName}
               onGenerationComplete={handleGenerationComplete}
+              onRunIdChange={setCurrentRunId}
             />
           </div>
 
           <div className={activeTab === "code" ? "block w-full h-full" : "hidden"}>
-            <CodeTab projectId={projectId} />
+            <CodeTab 
+              projectId={projectId} 
+              runId={currentRunId}
+            />
           </div>
 
           <div className={activeTab === "preview" ? "block w-full h-full" : "hidden"}>
