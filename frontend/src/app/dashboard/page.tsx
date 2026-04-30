@@ -25,10 +25,7 @@ export default function CraftaStudio() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
-  // ✅ Track whether any code has been generated — controls Export & Share visibility
   const [hasGeneratedOutput, setHasGeneratedOutput] = useState(false);
-
-  // ✅ Track selected run from history — passed to CodeTab
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -39,44 +36,52 @@ export default function CraftaStudio() {
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
+
     const syncUser = async () => {
       try {
         const token = await getToken();
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
+
         const controller = new AbortController();
         const timeout = setTimeout(() => {
           controller.abort();
           console.warn("[Dashboard] Sync timed out — proceeding without projectId");
-        }, 30000); // 30s for slow DB warm-up
+        }, 30000);
+
         const res = await fetch(`${apiUrl}/api/auth/sync`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           signal: controller.signal,
         });
+
         clearTimeout(timeout);
         if (!res.ok) return;
+
         const user = await res.json();
         const firstProject = user?.teams?.[0]?.projects?.[0];
-        if (firstProject) setProjectId(firstProject.id);
-        else console.warn("[Dashboard] No project found — user may be new");
-      } catch (err: any) {
-        if (err?.name === "AbortError") return;
+
+        if (firstProject) {
+          setProjectId(firstProject.id);
+        } else {
+          console.warn("[Dashboard] No project found — user may be new");
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") return;
         console.error("[Dashboard] Failed to sync user:", err);
       }
     };
+
     syncUser();
   }, [isLoaded, isSignedIn]);
 
-  // ✅ Called by CanvasTab when generation completes
   const handleGenerationComplete = useCallback(() => {
     setHasGeneratedOutput(true);
   }, []);
 
-  // ✅ Called by HistoryPanel when user loads a past run
   const handleSelectRun = useCallback((runId: string) => {
     setSelectedRunId(runId);
     setHasGeneratedOutput(true);
-    setActiveTab("code"); // Switch to code tab to show the output
+    setActiveTab("code");
   }, []);
 
   if (!isLoaded || !isSignedIn) {
@@ -96,6 +101,7 @@ export default function CraftaStudio() {
         }}
         onHistoryClick={() => setIsHistoryOpen(true)}
       />
+
       <div className="flex flex-col flex-1 relative overflow-hidden">
         <TopNav
           activeTab={activeTab}
@@ -108,6 +114,7 @@ export default function CraftaStudio() {
           isChatSidebarOpen={isChatSidebarOpen}
           setIsChatSidebarOpen={setIsChatSidebarOpen}
         />
+
         <main className="flex-1 relative overflow-hidden">
           {activeTab === "canvas" && (
             <CanvasTab
@@ -123,15 +130,14 @@ export default function CraftaStudio() {
               onGenerationComplete={handleGenerationComplete}
             />
           )}
+
           {activeTab === "code" && (
-            <CodeTab
-              projectId={projectId}
-            />
+            <CodeTab projectId={projectId} />
           )}
+
           {activeTab === "preview" && <PreviewTab />}
         </main>
 
-        {/* ✅ Export & Share only visible when output exists */}
         <StatusBar hasGeneratedOutput={hasGeneratedOutput} />
       </div>
 
@@ -140,7 +146,6 @@ export default function CraftaStudio() {
         onClose={() => setIsSettingsOpen(false)}
       />
 
-      {/* ✅ History panel — per user, no data leakage */}
       <HistoryPanel
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
