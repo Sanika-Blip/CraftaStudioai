@@ -1,31 +1,23 @@
-/**
- * Steps 8-9: Retrieval → Context Building
- *
- * Fetches memories by projectId, filters by confidence threshold,
- * sorts by priority + confidence, builds structured context object.
- */
-
 import prisma from '../lib/prisma'
-import { MemoryType } from '@prisma/client'
+import { MemoryType, Priority } from '@prisma/client'
 
-// ── Config ─────────────────────────────────────────────────────────────────────
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.4
 const DEFAULT_TOP_N = 20
 
-const PRIORITY_WEIGHT: Record<string, number> = {
-  high: 3,
-  medium: 2,
-  low: 1,
+const PRIORITY_WEIGHT: Record<Priority, number> = {
+  [Priority.high]: 3,
+  [Priority.normal]: 2,
+  [Priority.low]: 1,
 }
 
+// 'architecture_decision' is not a valid MemoryType — use MemoryType.decision
 const RELEVANT_TYPES: MemoryType[] = [
-  'architecture_decision',
-  'preference',
-  'constraint',
-  'pattern',
+  MemoryType.decision,
+  MemoryType.preference,
+  MemoryType.constraint,
+  MemoryType.pattern,
 ]
 
-// ── Retrieval ──────────────────────────────────────────────────────────────────
 export async function retrieveMemories(
   projectId: string,
   options: {
@@ -44,23 +36,21 @@ export async function retrieveMemories(
     where: {
       projectId,
       confidence: { gte: confidenceThreshold },
-      type: { in: types },
+      entryType: { in: types },   // ← schema field is 'entryType', not 'type'
     },
     orderBy: [
       { confidence: 'desc' },
       { updatedAt: 'desc' },
     ],
-    take: topN * 2, // fetch extra, then re-sort in memory
+    take: topN * 2,
   })
 
-  // Re-sort by priority weight + confidence score
   const sorted = memories.sort((a, b) => {
     const scoreA = (PRIORITY_WEIGHT[a.priority] ?? 1) * a.confidence
     const scoreB = (PRIORITY_WEIGHT[b.priority] ?? 1) * b.confidence
     return scoreB - scoreA
   })
 
-  // Deduplicate by key (keep highest scoring)
   const seen = new Set<string>()
   const deduplicated = sorted.filter(m => {
     if (seen.has(m.key)) return false
@@ -71,8 +61,9 @@ export async function retrieveMemories(
   return deduplicated.slice(0, topN)
 }
 
-// ── Context Building ───────────────────────────────────────────────────────────
-export async function buildMemoryContext(projectId: string): Promise<Record<string, unknown>> {
+export async function buildMemoryContext(
+  projectId: string
+): Promise<Record<string, unknown>> {
   const memories = await retrieveMemories(projectId)
 
   if (memories.length === 0) {
@@ -80,29 +71,33 @@ export async function buildMemoryContext(projectId: string): Promise<Record<stri
     return {}
   }
 
-  // Convert memories to a flat key-value context object
   const context: Record<string, unknown> = {}
-
   for (const memory of memories) {
     const value = (memory.value as any)?.data ?? memory.value
     context[memory.key] = value
   }
 
-  // Update usage count for retrieved memories
   await prisma.memory.updateMany({
-    where: { projectId, key: { in: memories.map(m => m.key) } },
-    data: { usageCount: { increment: 1 }, lastUsedAt: new Date() },
+    where: {
+      projectId,
+      key: { in: memories.map(m => m.key) },
+    },
+    data: {
+      usageCount: { increment: 1 },
+      lastUsedAt: new Date(),
+    },
   })
 
-  console.log(`[memory] Built context with ${memories.length} memories for project ${projectId}`)
-
+  console.log(`[memory] Built context with ${memories.length} memories`)
   return context
 }
 
-// ── Get full memory list for API ───────────────────────────────────────────────
 export async function getProjectMemories(projectId: string) {
   return prisma.memory.findMany({
     where: { projectId },
-    orderBy: [{ priority: 'asc' }, { confidence: 'desc' }],
+    orderBy: [
+      { priority: 'asc' },
+      { confidence: 'desc' },
+    ],
   })
 }

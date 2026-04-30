@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { BLOCK_TYPES } from "../../../shared/types/blocks";
+const BLOCK_TYPES = ['data', 'api', 'ui', 'service', 'integration', 'auth', 'job'] as const;
 import prisma from "../lib/prisma";
 import { Prisma } from "@prisma/client";
 import { verifyClerk } from "../middleware/clerkAuth";

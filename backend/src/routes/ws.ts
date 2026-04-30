@@ -1,26 +1,41 @@
 import type { FastifyInstance } from 'fastify'
-import prisma from '../lib/prisma'
 import { addClient, removeClient } from '../ws/wsManager'
+import prisma from '../lib/prisma'
 
 export async function wsRoutes(app: FastifyInstance) {
   app.get('/:projectId', { websocket: true }, (socket, req: any) => {
-    const { projectId } = req.params
+    const { projectId } = req.params as { projectId: string }
+    const ws = socket.socket
 
-    addClient(projectId, socket)
+    addClient(projectId, ws)
 
-    prisma.block.findMany({ where: { projectId } }).then((blocks) => {
-      socket.socket.send(JSON.stringify({
-        type: 'init',
-        blocks: blocks.map(b => ({ blockId: b.id, blockType: b.blockType }))
-      }))
+    // Send initial block list so client can hydrate the canvas on connect
+    prisma.block
+      .findMany({ where: { projectId } })
+      .then((blocks: Array<{ id: string; blockType: string }>) => {
+        ws.send(JSON.stringify({
+          type: 'init',
+          blocks: blocks.map((b: { id: string; blockType: string }) => ({
+            blockId: b.id,
+            blockType: b.blockType,
+          })),
+        }))
+      })
+      .catch(() => { /* ignore */ })
+
+    ws.send(JSON.stringify({
+      event: 'connected',
+      projectId,
+      message: `Listening for updates on project ${projectId}`,
+    }))
+
+    socket.on('close', () => { removeClient(projectId, ws) })
+    socket.on('error', (err: Error) => {
+      console.error(`[ws] Socket error project=${projectId}:`, err.message)
+      removeClient(projectId, ws)
     })
-
-    socket.on('close', () => {
-      removeClient(projectId, socket)
-    })
-
-    socket.on('message', (msg: any) => {
-      console.log(`[ws] Message from client:`, msg.toString())
+    socket.on('message', (msg: Buffer) => {
+      console.log(`[ws] Message from client project=${projectId}:`, msg.toString())
     })
   })
 }

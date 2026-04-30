@@ -31,7 +31,7 @@ export function broadcastToProject(projectId: string, payload: object): void {
   const message = JSON.stringify(payload)
   let sent = 0
 
-  for (const socket of sockets) {
+  for (const socket of Array.from(sockets)) {
     try {
       if (socket.readyState === 1) {
         socket.send(message)

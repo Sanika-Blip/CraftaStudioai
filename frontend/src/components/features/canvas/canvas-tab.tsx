@@ -36,6 +36,7 @@ interface CanvasTabProps {
   projectName?: string;
   onProjectNameChange?: (name: string) => void;
   onGenerationComplete?: () => void;
+  onRunIdChange?: (runId: string | null) => void;
 }
 
 type BlockStatus = "done" | "failed" | "pending" | "running" | "awaiting_confirm";
@@ -372,6 +373,7 @@ function CanvasTabInner({
       if (res.ok) {
         const data = await res.json() as { runId: string; blockCount: number };
         setCurrentRunId(data.runId ?? null);
+        onRunIdChange?.(data.runId ?? null);
         console.log(`[CanvasTab] Workflow started: runId=${data.runId}, blocks=${data.blockCount}`);
       } else {
         setIsImplementing(false);

@@ -20,7 +20,7 @@ export default function RootLayout({
     <ClerkProvider
       appearance={{
         baseTheme: dark,
-        variables: { colorPrimary: '#fd572d' },
+        variables: { colorPrimary: '#9333ea' },
         elements: {
           card: "bg-surface/50 border border-border backdrop-blur-xl",
           headerTitle: "text-foreground font-bold",
@@ -29,9 +29,9 @@ export default function RootLayout({
           dividerLine: "bg-border",
           dividerText: "text-muted-foreground",
           formFieldLabel: "text-foreground",
-          formFieldInput: "bg-background border-border text-foreground focus:ring-[var(--primary-accent)]",
+          formFieldInput: "bg-background border-border text-foreground focus:ring-purple-600",
           footerActionText: "text-muted-foreground",
-          footerActionLink: "text-[var(--primary-accent)] hover:text-[var(--primary-accent-hover)]"
+          footerActionLink: "text-purple-500 hover:text-purple-400"
         }
       }}
     >

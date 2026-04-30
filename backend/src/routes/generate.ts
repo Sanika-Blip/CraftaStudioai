@@ -78,7 +78,7 @@ export async function generateRoutes(app: FastifyInstance) {
     // ── Step 1: Call Planner Agent ──────────────────────────────────────────
     let sharedContext: object = { memoryContext }
     try {
-      app.log.info(`[generate] Calling planner for project ${projectId}`)
+      console.log(`[generate] Calling planner for project ${projectId}`)
 
       const planRes = await fetch(`${AGENT_URL}/api/v1/plan/`, {
         method: 'POST',
@@ -95,7 +95,7 @@ export async function generateRoutes(app: FastifyInstance) {
       })
 
       if (!planRes.ok) {
-        app.log.warn(`[generate] Planner returned ${planRes.status} — using memory context only`)
+        console.warn(`[generate] Planner returned ${planRes.status} — using memory context only`)
       } else {
         const planData = await planRes.json() as { shared_context: object }
         sharedContext = { ...planData.shared_context, memoryContext }
@@ -105,10 +105,10 @@ export async function generateRoutes(app: FastifyInstance) {
           data: { sharedContextJson: sharedContext as any },
         })
 
-        app.log.info(`[generate] SharedContext saved for runId: ${run.id}`)
+        console.log(`[generate] SharedContext saved for runId: ${run.id}`)
       }
     } catch (err: any) {
-      app.log.warn(`[generate] Planner call failed: ${err.message} — using memory context only`)
+      console.warn(`[generate] Planner call failed: ${err.message} — using memory context only`)
     }
 
     // ── Step 10: Enqueue jobs with memory-enriched shared context ──────────
