@@ -2,7 +2,7 @@ import os
 import uvicorn
 import uuid 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -13,8 +13,8 @@ load_dotenv()
 from agents.routes import plan, generate
 from agents.utils.database import load_project_context 
 from agents.types_.context import SharedContext
-# 🔥 Import the graph so the API can trigger the orchestrator
-from agents.orchestrator.graph import app_graph 
+# 🔥 Import the router so the API can trigger the orchestrator
+from agents.orchestrator.router import orchestrate_flow
 
 app = FastAPI(
     title="CraftaStudio Agent Service",
@@ -69,24 +69,31 @@ app.include_router(generate.router, prefix="/api/v1/generate", tags=["Generator"
 @app.post("/api/v1/orchestrate")
 async def orchestrate(req: Request):
     """
-    Triggers the full agentic graph (Planner -> Generator -> Reviewer -> Merger).
+    Triggers the full agentic graph orchestration.
     """
     body = await req.json()
     project_id = body.get("projectId")
     prompt = body.get("prompt")
     run_id = body.get("runId")
 
-    # Initialize context
-    context = SharedContext(
+    # Run the orchestrator flow
+    result = await orchestrate_flow(
         project_id=project_id,
-        prompt=prompt,
-        run_id=run_id
+        user_input=prompt,
+        user_id="default-user"
     )
-
-    # Run the graph
-    result = app_graph.invoke(context, config={"configurable": {"thread_id": run_id}})
     
-    return result.model_dump()
+    return result
+
+@app.get("/", tags=["Root"])
+async def root():
+    return {
+        "message": "Welcome to CraftaStudio Agent Service API. Visit /docs for the API documentation."
+    }
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
 
 @app.get("/health", tags=["Health"])
 async def health() -> dict[str, str]:

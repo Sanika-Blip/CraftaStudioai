@@ -29,13 +29,13 @@ class MockLangfuse:
     def end(self, *args, **kwargs): pass
 
 if not pk:
-    print("⚠️  DEBUG: Langfuse keys not found. Switching to Mock Tracing.")
+    print("[WARN] DEBUG: Langfuse keys not found. Switching to Mock Tracing.")
     langfuse = MockLangfuse()
 elif Langfuse is None:
     print("DEBUG: Langfuse package not installed. Switching to Mock Tracing.")
     langfuse = MockLangfuse()
 else:
-    print(f"DEBUG: Langfuse initialized with {pk[:8]}...")
+    print(f"[OK] DEBUG: Langfuse initialized with {pk[:8]}...")
     langfuse = Langfuse(public_key=pk, secret_key=sk, host=host)
 
 
@@ -43,6 +43,7 @@ else:
 class GroqLLMClient:
     def __init__(self):
         self._client = None
+        self._sarvam = None
 
     def _get_client(self):
         if self._client:
@@ -54,12 +55,26 @@ class GroqLLMClient:
         self._client = Groq(api_key=key)
         return self._client
 
-    @retry(stop=stop_after_attempt(1))
+    def _get_sarvam(self):
+        if self._sarvam:
+            return self._sarvam
+        key = os.getenv("SARVAM_API_KEY", "").strip()
+        if not key:
+            return None
+        self._sarvam = SarvamClient()
+        return self._sarvam
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=8))
     def call(self, system_prompt: str, user_message: str, **kwargs) -> dict:
         client = self._get_client()
 
         if client is None:
-            print("⚠️  [Groq] No GROQ_API_KEY — using mock output")
+            sarvam = self._get_sarvam()
+            if sarvam:
+                print("[LLM] No Groq key - falling back to Sarvam")
+                return sarvam.call(system_prompt, user_message, **kwargs)
+            
+            print("[LLM] No API keys (Groq/Sarvam) - using mock output")
             return {
                 "text": '{"title":"Mock Plan","summary":"No API key","markdown":"","blocks":[],"is_chat":false}',
                 "input_tokens": 0,
@@ -85,7 +100,7 @@ class GroqLLMClient:
                     max_tokens=4096,
                 )
                 text = response.choices[0].message.content or ""
-                print(f"✅ [Groq/plan] {len(text)} chars with {model}")
+                print(f"[OK] [Groq/plan] {len(text)} chars with {model}")
                 return {
                     "text": text,
                     "input_tokens": getattr(response.usage, "prompt_tokens", 0),
@@ -93,17 +108,20 @@ class GroqLLMClient:
                 }
             except Exception as e:
                 err_msg = str(e).lower()
-                print(f"⚠️ [Groq/plan] {model} failed: {e}")
+                print(f"[WARN] [Groq/plan] {model} failed: {e}")
                 if "rate limit" not in err_msg and "429" not in err_msg:
                     raise  # If it's not a rate limit, don't try other Groq models
 
         # If we reach here, all Groq models hit rate limits. Fall back to Sarvam.
-        print("⚠️ [Groq] Rate limit hit on all models. Falling back to Sarvam...")
+        print("[WARN] [Groq] Rate limit hit on all models. Falling back to Sarvam...")
         try:
-            sarvam = SarvamClient()
-            return sarvam.call(system_prompt, user_message, **kwargs)
+            sarvam = self._get_sarvam()
+            if sarvam:
+                return sarvam.call(system_prompt, user_message, **kwargs)
+            else:
+                raise Exception("Sarvam fallback failed - no API key")
         except Exception as e:
-            print(f"❌ [Fallback] Sarvam also failed: {e}")
+            print(f"[ERROR] [Fallback] Sarvam also failed: {e}")
             raise
 
 
@@ -115,23 +133,38 @@ class SarvamClient:
         self.max_tokens = int(os.getenv("MAX_TOKENS", 4096))
 
     def call(self, system_prompt: str, user_message: str, **kwargs) -> dict:
-        if not self.api_key or self.api_key.startswith("sk-ant-"):
+        if not self.api_key:
             raise Exception("Sarvam API key not configured")
-        import openai
-        client = openai.OpenAI(api_key=self.api_key, base_url="https://api.sarvam.ai/v1")
+        
+        import requests
         try:
-            response = client.chat.completions.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                messages=[
+            url = "https://api.sarvam.ai/v1/chat/completions"
+            headers = {
+                "api-subscription-key": self.api_key,
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": self.model,
+                "messages": [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message},
+                    {"role": "user", "content": user_message}
                 ],
-            )
+                "temperature": 0.2,
+                "max_tokens": self.max_tokens
+            }
+            
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
+            if response.status_code != 200:
+                raise Exception(f"Sarvam API failed: {response.status_code} - {response.text}")
+                
+            data = response.json()
+            text = data["choices"][0]["message"]["content"]
+            
+            print(f"[OK] [Sarvam/plan] {len(text)} chars")
             return {
-                "text": response.choices[0].message.content or "",
-                "input_tokens": response.usage.prompt_tokens if response.usage else 0,
-                "output_tokens": response.usage.completion_tokens if response.usage else 0,
+                "text": text,
+                "input_tokens": data.get("usage", {}).get("prompt_tokens", 0),
+                "output_tokens": data.get("usage", {}).get("completion_tokens", 0),
             }
         except Exception as e:
             print(f"❌ [Sarvam] Error: {e}")

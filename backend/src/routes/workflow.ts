@@ -30,7 +30,7 @@ async function generateBlock(runId: string, projectId: string, blockId: string, 
     runId,
   })
 
-  const agentUrl = process.env.AGENT_SERVICE_URL ?? 'http://localhost:8005'
+  const agentUrl = process.env.AGENT_SERVICE_URL ?? 'http://localhost:8000'
   let outputCode = ''
 
   try {
@@ -97,7 +97,6 @@ export async function workflowRoutes(app: FastifyInstance) {
   app.get('/runs', { preHandler: verifyClerk }, async (req: any, reply) => {
     const clerkId = req.user.sub
     const user = await getOrCreateUser(clerkId)
-
     const { projectId } = req.query as { projectId?: string }
     if (!projectId) return reply.code(400).send({ error: 'projectId is required' })
 

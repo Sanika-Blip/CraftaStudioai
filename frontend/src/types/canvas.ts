@@ -5,7 +5,7 @@ export interface CanvasSubBlock {
   id: string;
   type: string;
   title?: string;
-  status?: "done" | "running" | "idle" | "error";
+  status?: "done" | "running" | "idle" | "error" | "awaiting_confirm" | "failed";
   description?: string;
 }
 
@@ -17,7 +17,7 @@ export interface CanvasBlock {
   type: string;
   title?: string;
   stack?: string;
-  status: "done" | "running" | "idle" | "error";
+  status: "done" | "running" | "idle" | "error" | "awaiting_confirm" | "failed";
   files?: string[];
   subBlocks?: CanvasSubBlock[];
 }

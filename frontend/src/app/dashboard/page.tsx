@@ -40,20 +40,24 @@ export default function CraftaStudio() {
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
+
     const syncUser = async () => {
       try {
         const token = await getToken();
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
+
         const controller = new AbortController();
         const timeout = setTimeout(() => {
           controller.abort();
-          console.warn("[Dashboard] Sync timed out");
-        }, 5000);
+          console.warn("[Dashboard] Sync timed out — proceeding without projectId");
+        }, 30000);
+
         const res = await fetch(`${apiUrl}/api/auth/sync`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           signal: controller.signal,
         });
+
         clearTimeout(timeout);
         if (!res.ok) return;
         const user = await res.json() as { teams?: { projects?: { id: string; name: string }[] }[] };
@@ -67,6 +71,7 @@ export default function CraftaStudio() {
         console.error("[Dashboard] Failed to sync user:", err);
       }
     };
+
     syncUser();
   }, [isLoaded, isSignedIn, getToken]);
 
@@ -110,7 +115,9 @@ export default function CraftaStudio() {
           setIsSettingsOpen(true);
         }}
         onHistoryClick={() => setIsHistoryOpen(true)}
+        onProjectSelect={handleProjectSwitch}
       />
+
       <div className="flex flex-col flex-1 relative overflow-hidden">
         <TopNav
           activeTab={activeTab}
@@ -123,10 +130,8 @@ export default function CraftaStudio() {
           isChatSidebarOpen={isChatSidebarOpen}
           setIsChatSidebarOpen={setIsChatSidebarOpen}
         />
+
         <main className="flex-1 relative overflow-hidden">
-          {/* CanvasTab is ALWAYS mounted — never unmounted on tab switch.
-              Unmounting destroys planDoc, blocks, runId, isImplementing state.
-              Use CSS visibility to hide/show instead. */}
           <div className={activeTab === "canvas" ? "block w-full h-full" : "hidden"}>
             <CanvasTab
               isPlanDocOpen={isPlanDocOpen}
