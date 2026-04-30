@@ -23,10 +23,13 @@ export default function CraftaStudio() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isChatSidebarOpen, setIsChatSidebarOpen] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
-  const [projectName, setProjectName] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState<string>("Untitled Project");
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
+  // Track whether any code has been generated — controls Export & Share visibility
   const [hasGeneratedOutput, setHasGeneratedOutput] = useState(false);
+
+  // Track selected run from history — passed to CodeTab
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -131,7 +134,7 @@ export default function CraftaStudio() {
         />
 
         <main className="flex-1 relative overflow-hidden">
-          {activeTab === "canvas" && (
+          <div className={activeTab === "canvas" ? "block w-full h-full" : "hidden"}>
             <CanvasTab
               isPlanDocOpen={isPlanDocOpen}
               setIsPlanDocOpen={setIsPlanDocOpen}
@@ -142,15 +145,19 @@ export default function CraftaStudio() {
               isChatSidebarOpen={isChatSidebarOpen}
               setIsChatSidebarOpen={setIsChatSidebarOpen}
               projectId={projectId}
+              projectName={projectName}
+              onProjectNameChange={setProjectName}
               onGenerationComplete={handleGenerationComplete}
             />
-          )}
+          </div>
 
-          {activeTab === "code" && (
+          <div className={activeTab === "code" ? "block w-full h-full" : "hidden"}>
             <CodeTab projectId={projectId} />
-          )}
+          </div>
 
-          {activeTab === "preview" && <PreviewTab />}
+          <div className={activeTab === "preview" ? "block w-full h-full" : "hidden"}>
+            <PreviewTab />
+          </div>
         </main>
 
         <StatusBar hasGeneratedOutput={hasGeneratedOutput} />
