@@ -1,10 +1,9 @@
 "use client";
 
 import { useMemo, useEffect, useState, useCallback, useRef } from "react";
-import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import {
-  ReactFlow, Background, Controls,
+  ReactFlow, Background, Controls, BackgroundVariant,
   useNodesState, useEdgesState, useReactFlow,
   ReactFlowProvider, Node, Edge,
 } from "@xyflow/react";
@@ -34,8 +33,64 @@ interface CanvasTabProps {
   isChatSidebarOpen?: boolean;
   setIsChatSidebarOpen?: (open: boolean) => void;
   projectId?: string | null;
+  projectName?: string;
+  onProjectNameChange?: (name: string) => void;
   onGenerationComplete?: () => void;
   onRunIdChange?: (runId: string | null) => void;
+}
+
+type BlockStatus = "done" | "failed" | "pending" | "running" | "awaiting_confirm";
+
+interface BlockOutput {
+  id: string;
+  blockId: string;
+  blockType: string;
+  outputCode: string;
+  status: BlockStatus;
+  tokensUsed: number;
+  errorMsg?: string | null;
+}
+
+interface WorkflowRun {
+  id: string;
+  prompt: string;
+  status: "pending" | "running" | "done" | "failed";
+  blockOutputs: BlockOutput[];
+}
+
+// Matches exactly what PlanDocPanel expects (PlanBlock shape)
+interface PlanDocBlock {
+  id: string;
+  title: string;
+  type: string;
+  stack: string;
+  status: string;
+  description?: string;
+  subBlocks?: { id: string; type: string; title: string; status: string }[];
+}
+
+interface PlanDoc {
+  title: string;
+  summary: string;
+  markdown: string;
+  blocks: PlanDocBlock[];
+  is_chat?: boolean;
+  projectId?: string;
+}
+
+// Matches exactly what BlockInfoPanel expects
+interface BlockInfoData {
+  id: string;
+  title: string;
+  stack: string;
+  status: string;
+  files: string[];
+}
+
+interface RawBlock {
+  id: string;
+  blockType: string;
+  blockJson: Record<string, unknown>;
 }
 
 const MOCK_PAYLOAD: CanvasJSONPayload = {
@@ -44,14 +99,14 @@ const MOCK_PAYLOAD: CanvasJSONPayload = {
     { id: "blk-db", type: "block", title: "Data Persistence", stack: "PostgreSQL + Prisma", status: "running", subBlocks: [{ id: "sub-db-1", type: "db", title: "Prisma Schema Creation", status: "running" }, { id: "sub-db-2", type: "db", title: "Migration Pipeline", status: "idle" }] },
     { id: "blk-ui", type: "block", title: "Frontend Dashboard", stack: "React + Tailwind", status: "idle", subBlocks: [{ id: "sub-ui-1", type: "ui", title: "Shell Layout", status: "idle" }, { id: "sub-ui-2", type: "ui", title: "Navigation Sidebar", status: "idle" }] },
     { id: "blk-api", type: "block", title: "Inventory API", stack: "Node.js + tRPC", status: "idle", subBlocks: [{ id: "sub-api-1", type: "api", title: "Product Endpoints", status: "idle" }] },
-    { id: "blk-legacy", type: "legacy-system", title: "Legacy Gateway", status: "idle" }
-  ]
+    { id: "blk-legacy", type: "legacy-system", title: "Legacy Gateway", status: "idle" },
+  ],
 };
 
 function CanvasTabInner({
-  isPlanDocOpen, setIsPlanDocOpen, isPlanMode, setActiveTab,
-  isPlanGenerated, setIsPlanGenerated, isChatSidebarOpen,
-  setIsChatSidebarOpen, projectId, onGenerationComplete, onRunIdChange
+  isPlanDocOpen, setIsPlanDocOpen, setActiveTab,
+  isChatSidebarOpen, setIsChatSidebarOpen, projectId,
+  projectName: projectNameProp, onProjectNameChange, onGenerationComplete,
 }: CanvasTabProps) {
   const { fitView } = useReactFlow();
   const { startNode, finishNode } = useEdgeHighlight();
@@ -67,15 +122,29 @@ function CanvasTabInner({
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
   const [payload, setPayload] = useState<CanvasJSONPayload>(isDemoMode ? MOCK_PAYLOAD : { blocks: [] });
-  const [selectedBlockInfo, setSelectedBlockInfo] = useState<any>(null);
+  const [selectedBlockInfo, setSelectedBlockInfo] = useState<BlockInfoData | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const [focusedBlock, setFocusedBlock] = useState<Node | null>(null);
   const [isChatMoved, setIsChatMoved] = useState(false);
-  const [projectName, setProjectName] = useState("Alpha Project Alpha");
+  // projectName comes from parent (dashboard) so it stays in sync with the active project
+  const projectName = projectNameProp ?? "Untitled Project";
+  const setProjectName = useCallback((name: string) => {
+    onProjectNameChange?.(name);
+    // Also persist to backend
+    if (!projectId) return;
+    getToken().then((token) => {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
+      fetch(`${apiUrl}/api/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token ?? ""}` },
+        body: JSON.stringify({ name }),
+      }).catch(() => {/* ignore */});
+    }).catch(() => {/* ignore */});
+  }, [onProjectNameChange, projectId, getToken]);
   const lastPromptRef = useRef<string>("");
   const wsRef = useRef<WebSocket | null>(null);
 
-  const [planDoc, setPlanDoc] = useState<any>(null);
+  const [planDoc, setPlanDoc] = useState<PlanDoc | null>(null);
   const [isPlanning, setIsPlanning] = useState(false);
   const [isImplementing, setIsImplementing] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
@@ -88,72 +157,131 @@ function CanvasTabInner({
   useEffect(() => {
     if (!projectId || isDemoMode) return;
     const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004").replace("http", "ws")}/api/ws/${projectId}`;
-    
     let ws: WebSocket;
+    let shouldReconnect = true;
     const connect = () => {
+      if (!shouldReconnect) return;
       ws = new WebSocket(wsUrl);
       wsRef.current = ws;
+      ws.onopen = () => console.log("[WS] Connected to project", projectId);
       ws.onmessage = (evt) => {
         try {
-          const msg = JSON.parse(evt.data);
-          if (msg.event === "block:status_update") {
+          const msg = JSON.parse(evt.data) as { event: string; blockId?: string; status?: BlockStatus; output?: string };
+          if (msg.event === "block:status_update" && msg.blockId && msg.status) {
             const { blockId, status, output } = msg;
-
-            if (status === "awaiting_confirm") {
-              setActiveTab("code");
-            }
-
-            setPayload(prev => {
-              const updated = prev.blocks.map(b => b.id === blockId ? { ...b, status, outputCode: output } : b);
-              const allDone = updated.every(b => b.status === "done" || b.status === "failed");
-              if (allDone) {
-                setIsImplementing(false);
-                onGenerationComplete?.();
-              }
+            if (status === "awaiting_confirm") setActiveTab("code");
+            setPayload((prev) => {
+              const updated = prev.blocks.map((b) => b.id === blockId ? { ...b, status, outputCode: output } : b);
+              const allDone = updated.every((b) => b.status === "done" || b.status === "failed");
+              if (allDone) { setIsImplementing(false); setTimeout(() => onGenerationComplete?.(), 0); }
               return { blocks: updated };
             });
           }
           if (msg.event === "workflow:completed" || msg.event === "workflow:failed") {
             setIsImplementing(false);
           }
-        } catch {}
+        } catch { /* ignore */ }
       };
       ws.onerror = () => console.warn("[WS] Connection error — will retry");
-      ws.onclose = () => {
-        setTimeout(connect, 2000);
-      };
+      ws.onclose = () => { if (shouldReconnect) setTimeout(connect, 1000); };
     };
-
     connect();
-    return () => { 
-      ws?.close(); 
-      wsRef.current = null;
-    };
+    return () => { shouldReconnect = false; ws?.close(); wsRef.current = null; };
   }, [projectId, isDemoMode, onGenerationComplete, setActiveTab]);
 
-  // Fetch existing blocks
+  // Polling fallback when implementing
+  useEffect(() => {
+    if (!isImplementing || !currentRunId || !projectId) return;
+    const poll = async () => {
+      try {
+        const token = await getToken();
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
+        const res = await fetch(`${apiUrl}/api/workflow/runs/${currentRunId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const run = await res.json() as WorkflowRun;
+        if (run.blockOutputs?.length > 0) {
+          setPayload((prev) => ({
+            blocks: prev.blocks.map((b) => {
+              const output = run.blockOutputs.find((o) => o.blockId === b.id);
+              if (!output) return b;
+              return { ...b, status: output.status === "pending" ? "awaiting_confirm" : output.status, outputCode: output.outputCode };
+            }),
+          }));
+        }
+        if (run.status === "done" || run.status === "failed") {
+          setIsImplementing(false);
+          setTimeout(() => onGenerationComplete?.(), 0);
+        }
+      } catch { /* ignore */ }
+    };
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => clearInterval(interval);
+  }, [isImplementing, currentRunId, projectId, getToken, onGenerationComplete]);
+
+  // Fetch existing blocks — clear canvas first so old project blocks don't persist
   useEffect(() => {
     if (!projectId || isDemoMode) return;
+    // Immediately clear canvas when switching projects
+    setPayload({ blocks: [] });
+    setPlanDoc(null);
+    setCurrentRunId(null);
     const fetchBlocks = async () => {
       try {
         const token = await getToken();
         const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
-        const res = await fetch(`${apiUrl}/api/blocks?projectId=${projectId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const blocks = await res.json();
-          if (blocks.length > 0) {
-            setPayload({
-              blocks: blocks.map((b: any) => ({
-                id: b.id, type: b.blockType,
-                title: b.blockJson?.title || "Untitled Block",
-                stack: b.blockJson?.stack || "Default Stack",
-                status: b.blockJson?.status || "idle",
-                subBlocks: b.blockJson?.subBlocks || []
-              }))
+
+        // Fetch blocks and latest run in parallel
+        const [blocksRes, runsRes] = await Promise.all([
+          fetch(`${apiUrl}/api/blocks?projectId=${projectId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`${apiUrl}/api/workflow/runs?projectId=${projectId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+
+        if (!blocksRes.ok) return;
+        const blocks = await blocksRes.json() as RawBlock[];
+        if (blocks.length === 0) return;
+
+        // Build a map of blockId → latest output status from the most recent run
+        const outputStatusMap: Record<string, BlockStatus> = {};
+        let latestRunId: string | null = null;
+        let latestRunStatus: string | null = null;
+
+        if (runsRes.ok) {
+          const runs = await runsRes.json() as WorkflowRun[];
+          const latestRun = runs[0]; // already ordered by createdAt desc
+          if (latestRun) {
+            latestRunId = latestRun.id;
+            latestRunStatus = latestRun.status;
+            latestRun.blockOutputs?.forEach((o) => {
+              // Map DB "pending" → "awaiting_confirm" for UI
+              outputStatusMap[o.blockId] = o.status === "pending" ? "awaiting_confirm" : o.status;
             });
           }
+        }
+
+        if (latestRunId) setCurrentRunId(latestRunId);
+
+        setPayload({
+          blocks: blocks.map((b) => ({
+            id: b.id,
+            type: b.blockType,
+            title: (b.blockJson?.title as string) || "Untitled Block",
+            stack: (b.blockJson?.stack as string) || "Default Stack",
+            // Use output status if available, otherwise fall back to blockJson status or idle
+            status: outputStatusMap[b.id] ?? ((b.blockJson?.status as CanvasBlock["status"]) || "idle"),
+            subBlocks: (b.blockJson?.subBlocks as CanvasBlock["subBlocks"]) || [],
+          })),
+        });
+
+        // If the latest run is still in progress, resume the implementing state
+        if (latestRunStatus === "running" || latestRunStatus === "pending") {
+          setIsImplementing(true);
         }
       } catch (err) { console.error("Failed to fetch blocks:", err); }
     };
@@ -162,30 +290,36 @@ function CanvasTabInner({
 
   const handlePromptSubmit = useCallback(async (msg: string) => {
     setIsChatMoved(true);
-    if (setIsChatSidebarOpen) setIsChatSidebarOpen(false);
+    setIsChatSidebarOpen?.(false);
     setIsPlanDocOpen(true);
     setPlanDoc(null);
     setIsPlanning(true);
-
     if (isDemoMode) {
       const prompt = msg.toLowerCase();
       let newBlocks: CanvasBlock[] = [];
       if (prompt.includes("auth") || prompt.includes("login")) {
         newBlocks = [
           { id: "blk-clerk", type: "block", title: "Clerk Integration", stack: "Next.js", status: "idle", subBlocks: [{ id: "s1", type: "feat", title: "OAuth Providers" }] },
-          { id: "blk-db-users", type: "block", title: "User Schema", stack: "Prisma", status: "idle", subBlocks: [{ id: "s2", type: "feat", title: "Profile Logic" }] }
+          { id: "blk-db-users", type: "block", title: "User Schema", stack: "Prisma", status: "idle", subBlocks: [{ id: "s2", type: "feat", title: "Profile Logic" }] },
         ];
       } else {
-        newBlocks = MOCK_PAYLOAD.blocks.slice(0, 4).map(b => ({ ...b, status: "idle" }));
+        newBlocks = MOCK_PAYLOAD.blocks.slice(0, 4).map((b) => ({ ...b, status: "idle" as const }));
       }
       setTimeout(() => {
-        setPlanDoc({ title: msg.slice(0, 40), summary: "Demo plan. Click Implement This to start.", markdown: `## Overview\n${msg}`, blocks: newBlocks });
+        const planBlocks: PlanDocBlock[] = newBlocks.map((b) => ({
+          id: b.id,
+          type: b.type,
+          title: b.title ?? b.id,
+          stack: b.stack ?? "",
+          status: b.status,
+          subBlocks: (b.subBlocks ?? []) as { id: string; type: string; title: string; status: string }[],
+        }));
+        setPlanDoc({ title: msg.slice(0, 40), summary: "Demo plan. Click Implement This to start.", markdown: `## Overview\n${msg}`, blocks: planBlocks });
         setPayload({ blocks: newBlocks });
         setIsPlanning(false);
       }, 1200);
       return;
     }
-
     try {
       lastPromptRef.current = msg;
       const token = await getToken();
@@ -196,10 +330,16 @@ function CanvasTabInner({
         body: JSON.stringify({ prompt: msg, project_name: projectName, projectId }),
       });
       if (!res.ok) { setIsPlanning(false); return; }
-      const plan = await res.json();
+      const plan = await res.json() as PlanDoc;
       setPlanDoc(plan);
       if (plan.blocks?.length > 0) {
-        setPayload({ blocks: plan.blocks.map((b: any) => ({ ...b, status: "idle" })) });
+        setPayload({
+          blocks: plan.blocks.map((b) => ({
+            id: b.id, type: b.type, title: b.title, stack: b.stack,
+            status: "idle" as const,
+            subBlocks: b.subBlocks as CanvasBlock["subBlocks"],
+          })),
+        });
       }
     } catch (err) {
       console.error("[CanvasTab] Failed to generate plan:", err);
@@ -211,24 +351,20 @@ function CanvasTabInner({
   const handleImplement = useCallback(async () => {
     if (!planDoc || isImplementing) return;
     setIsImplementing(true);
-
     if (isDemoMode) {
-      setPayload(prev => ({ blocks: prev.blocks.map(b => ({ ...b, status: "running" })) }));
+      setPayload((prev) => ({ blocks: prev.blocks.map((b) => ({ ...b, status: "running" as const })) }));
       setTimeout(() => {
-        setPayload(prev => ({ blocks: prev.blocks.map(b => ({ ...b, status: "done" })) }));
+        setPayload((prev) => ({ blocks: prev.blocks.map((b) => ({ ...b, status: "done" as const })) }));
         setIsImplementing(false);
-        onGenerationComplete?.();
+        setTimeout(() => onGenerationComplete?.(), 0);
       }, 3000);
       return;
     }
-
     if (!projectId) { setIsImplementing(false); return; }
-
     try {
       const token = await getToken();
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004";
       const prompt = lastPromptRef.current || planDoc.summary || planDoc.title || "Build this project";
-      
       const res = await fetch(`${apiUrl}/api/workflow/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -269,17 +405,19 @@ function CanvasTabInner({
 
   const refreshLayout = useCallback(() => {
     const { nodes: newNodes, edges: newEdges } = calculateCircularLayout(payload, { x: -210, y: -80 });
-    const hydratedNodes = newNodes.map(node => {
+    const hydratedNodes = newNodes.map((node) => {
       if (node.id === "planner") {
         return { ...node, data: { ...node.data, projectName, onProjectNameChange: setProjectName, onPromptSubmit: handlePromptSubmit } };
       }
       return {
-        ...node, data: {
+        ...node,
+        data: {
           ...node.data,
-          onInfoClick: (info: any) => setSelectedBlockInfo(info),
-          onViewCode: (block: any) => setCodeViewerBlock({ id: block.id, title: block.title, stack: block.stack }),
-          onSubblockClick: () => setActiveTab("code")
-        }
+          onInfoClick: (info: BlockInfoData) => setSelectedBlockInfo(info),
+          onViewCode: (block: { id: string; title?: string; stack?: string }) =>
+            setCodeViewerBlock({ id: block.id, title: block.title ?? "", stack: block.stack }),
+          onSubblockClick: () => setActiveTab("code"),
+        },
       };
     });
     setNodes(hydratedNodes);
@@ -293,11 +431,11 @@ function CanvasTabInner({
 
   useEffect(() => {
     if (cycleTimerRef.current) { clearTimeout(cycleTimerRef.current); cycleTimerRef.current = null; }
-    const runningBlock = payload.blocks.find(b => b.status === "running");
+    const runningBlock = payload.blocks.find((b) => b.status === "running");
     if (runningBlock) {
       startNode(runningBlock.id);
     } else {
-      const blockIds = payload.blocks.map(b => b.id);
+      const blockIds = payload.blocks.map((b) => b.id);
       if (blockIds.length === 0) { finishNode(); return; }
       let idx = 0;
       const cycle = () => {
@@ -310,7 +448,9 @@ function CanvasTabInner({
     return () => { if (cycleTimerRef.current) clearTimeout(cycleTimerRef.current); };
   }, [payload, startNode, finishNode]);
 
-  const onNodeClick = (_: any, node: Node) => { if (node.type === "block") setFocusedBlock(node); };
+  const onNodeClick = (_evt: React.MouseEvent, node: Node) => {
+    if (node.type === "block") setFocusedBlock(node);
+  };
 
   if (!mounted) {
     return (
@@ -321,7 +461,7 @@ function CanvasTabInner({
     );
   }
 
-  const blockAwaitingConfirm = payload.blocks.find(b => b.status === "awaiting_confirm");
+  const blockAwaitingConfirm = payload.blocks.find((b) => b.status === "awaiting_confirm");
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-[var(--background)]">
@@ -363,7 +503,15 @@ function CanvasTabInner({
           minZoom={0.2} maxZoom={2}
           className="[&_.react-flow__attribution]:hidden"
         >
-          {mounted && <Background color="var(--primary-accent)" gap={36} size={0.8} variant={"dots" as any} className="opacity-[0.15]" />}
+          {mounted && (
+            <Background
+              color="var(--primary-accent)"
+              gap={36}
+              size={0.8}
+              variant={BackgroundVariant.Dots}
+              className="opacity-[0.15]"
+            />
+          )}
           <Controls className="!border-0 !rounded-2xl !shadow-xl !overflow-hidden [&_button]:!border-0 [&_button]:!w-8 [&_button]:!h-8 [&_button]:!flex [&_button]:!items-center [&_button]:!justify-center [&_button]:!transition-colors [&_button]:!duration-150 [&_button_svg]:!w-4 [&_button_svg]:!h-4 [&_button_svg]:!fill-[var(--foreground)] [&_button]:!bg-[var(--surface)] [&_button]:!text-[var(--foreground)] [&_button:hover]:!bg-[var(--primary-accent)]/15 [&_button:hover_svg]:!fill-[var(--primary-accent)]" showInteractive={false} />
         </ReactFlow>
       )}
@@ -406,13 +554,8 @@ function CanvasTabInner({
               className="px-6 py-2 rounded-xl bg-[var(--primary-accent)] text-white font-semibold text-sm shadow-[0_0_15px_rgba(139,92,246,0.5)] hover:shadow-[0_0_25px_rgba(139,92,246,0.6)] transition-all disabled:opacity-50 flex items-center gap-2"
             >
               {isConfirming ? (
-                <>
-                  <div className="size-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                  Proceeding...
-                </>
-              ) : (
-                "Proceed to Next Block"
-              )}
+                <><div className="size-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />Proceeding...</>
+              ) : "Proceed to Next Block"}
             </button>
           </div>
         </div>
