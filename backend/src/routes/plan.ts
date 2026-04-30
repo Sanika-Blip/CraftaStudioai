@@ -6,7 +6,7 @@ import prisma from '../lib/prisma'
 const PlanDocSchema = z.object({
   prompt: z.string().min(2),
   project_name: z.string().optional().default('My Project'),
-  projectId: z.string().uuid().nullable().optional(),
+  projectId: z.string().uuid().optional().nullable(),
 })
 
 // Convert a block title to a slug used as blockType in DB
@@ -24,7 +24,7 @@ export async function planRoutes(app: FastifyInstance) {
       return reply.code(422).send({ error: parsed.error.flatten() })
     }
 
-    const agentUrl = process.env.AGENT_SERVICE_URL ?? 'http://localhost:8005'
+    const agentUrl = process.env.AGENT_SERVICE_URL ?? 'http://localhost:8000'
 
     try {
       console.log(`[plan] → ${agentUrl}/api/v1/plan/doc — "${parsed.data.prompt.slice(0, 60)}"`)

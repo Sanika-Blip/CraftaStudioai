@@ -67,50 +67,37 @@ export async function getOrCreateUser(clerkId: string) {
       const { email, name } = await fetchClerkUser(clerkId);
       console.log("[getOrCreateUser] Clerk data fetched:", { email, name });
 
-      const createdUser = await prisma.user.create({
-        data: {
-          clerkId,
-          email,
-          name
-        }
+      const newUser = await prisma.user.create({
+        data: { clerkId, email, name }
       });
 
-      const team = await prisma.team.create({
+      const newTeam = await prisma.team.create({
         data: {
-          name: "Personal Workspace"
-        }
+          name: "Personal Workspace",
+          members: {
+            create: [{ user: { connect: { id: newUser.id } }, role: 'owner' }]
+          },
+          projects: {
+            create: [{ name: "My First Architecture" }]
+          }
+        },
+        include: { projects: true }
       });
 
-      await prisma.teamMember.create({
-        data: {
-          teamId: team.id,
-          userId: createdUser.id,
-          role: 'owner'
-        }
-      });
-
-      await prisma.project.create({
-        data: {
-          teamId: team.id,
-          name: "My First Architecture"
-        }
-      });
-
-      // Fetch again with includes
-      user = (await prisma.user.findUnique({
-        where: { clerkId },
+      // Re-fetch to ensure we have the fully joined object exactly like findUnique returns
+      user = await prisma.user.findUnique({
+        where: { id: newUser.id },
         include: {
           teamMemberships: {
             include: {
               team: {
-                include: {
-                  projects: true
-                }
+                include: { projects: true }
               }
             }
           }
         }
-      }))!
+      });
+      if (!user) throw new Error("Failed to re-fetch newly created user");
       console.log("[getOrCreateUser] User created successfully");
     }
 
@@ -127,23 +114,16 @@ export async function getOrCreateUser(clerkId: string) {
       console.log("[getOrCreateUser] User lacks team, creating default...");
       const newTeam = await prisma.team.create({
         data: {
-          name: "Personal Workspace"
-        }
+          name: "Personal Workspace",
+          members: {
+            create: [{ user: { connect: { id: user.id } }, role: 'owner' }]
+          },
+          projects: {
+            create: [{ name: "My First Architecture" }]
+          }
+        },
+        include: { projects: true }
       });
-      await prisma.teamMember.create({
-        data: {
-          teamId: newTeam.id,
-          userId: user.id,
-          role: 'owner'
-        }
-      });
-      const newProject = await prisma.project.create({
-        data: {
-          name: "My First Architecture",
-          teamId: newTeam.id
-        }
-      });
-      // Update user include
       user.teamMemberships = [{
         id: '', // dummy
         teamId: newTeam.id,
@@ -151,9 +131,9 @@ export async function getOrCreateUser(clerkId: string) {
         role: 'owner',
         joinedAt: new Date(),
         updatedAt: new Date(),
-        team: { ...newTeam, projects: [newProject] }
-      }];
-      user.teams = [{ ...newTeam, projects: [newProject], role: 'owner' }];
+        team: newTeam
+      }] as any;
+      user.teams = [{ ...newTeam, role: 'owner' }];
     } else if (user && user.teamMemberships[0].team.projects.length === 0) {
       console.log("[getOrCreateUser] User lacks project, creating default...");
       const newProject = await prisma.project.create({
@@ -166,7 +146,7 @@ export async function getOrCreateUser(clerkId: string) {
       if (user.teams?.[0]) user.teams[0].projects = [newProject];
     }
 
-    console.log("[getOrCreateUser] Returning user with project:", user.teamMemberships?.[0]?.team?.projects?.[0]?.id);
+    console.log("[getOrCreateUser] Returning user with project:", user?.teamMemberships?.[0]?.team?.projects?.[0]?.id);
     return user;
   } catch (err: any) {
     console.error("[getOrCreateUser] FATAL ERROR:", err.message);

@@ -46,8 +46,8 @@ export default function CraftaStudio() {
         const controller = new AbortController();
         const timeout = setTimeout(() => {
           controller.abort();
-          console.warn("[Dashboard] Sync timed out");
-        }, 5000);
+          console.warn("[Dashboard] Sync timed out — proceeding without projectId");
+        }, 30000); // 30s for slow DB warm-up
         const res = await fetch(`${apiUrl}/api/auth/sync`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
@@ -58,6 +58,7 @@ export default function CraftaStudio() {
         const user = await res.json();
         const firstProject = user?.teams?.[0]?.projects?.[0];
         if (firstProject) setProjectId(firstProject.id);
+        else console.warn("[Dashboard] No project found — user may be new");
       } catch (err: any) {
         if (err?.name === "AbortError") return;
         console.error("[Dashboard] Failed to sync user:", err);

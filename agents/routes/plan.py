@@ -12,6 +12,58 @@ from agents.memory_layer import retrieve_memory
 
 router = APIRouter()
 
+# ── Graph Extraction & Validation ──────────────────────────────────────────────
+def extract_graph(raw_text: str) -> dict:
+    """Extracts the JSON graph from the markdown output."""
+    json_blocks = re.findall(r"```json\s*([\s\S]*?)\s*```", raw_text)
+    if json_blocks:
+        try:
+            return json.loads(json_blocks[-1])
+        except json.JSONDecodeError:
+            pass
+    return {"nodes": [], "edges": []}
+
+def validate_graph(graph: dict):
+    """Validates the structure of the graph."""
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+    
+    node_ids = {n.get("node_id") for n in nodes if n.get("node_id")}
+    
+    for edge in edges:
+        if edge.get("from") not in node_ids:
+            raise ValueError(f"Invalid edge: 'from' node '{edge.get('from')}' does not exist.")
+        if edge.get("to") not in node_ids:
+            raise ValueError(f"Invalid edge: 'to' node '{edge.get('to')}' does not exist.")
+            
+    # Simple cycle detection (DFS)
+    adj = {n: [] for n in node_ids}
+    for edge in edges:
+        from_node = edge.get("from")
+        to_node = edge.get("to")
+        if from_node in adj and to_node in adj:
+            adj[from_node].append(to_node)
+            
+    visited = set()
+    rec_stack = set()
+    
+    def dfs(node):
+        visited.add(node)
+        rec_stack.add(node)
+        for neighbor in adj.get(node, []):
+            if neighbor not in visited:
+                if dfs(neighbor):
+                    return True
+            elif neighbor in rec_stack:
+                return True
+        rec_stack.remove(node)
+        return False
+        
+    for node in node_ids:
+        if node not in visited:
+            if dfs(node):
+                raise ValueError("Graph contains a cycle.")
+
 # ── JSON repair helper ─────────────────────────────────────────────────────────
 def repair_json(raw: str) -> str:
     """
@@ -144,6 +196,7 @@ class PlanDocResponse(BaseModel):
     markdown: str
     blocks: List[Any]
     is_chat: bool = False
+    graph: Optional[dict] = None
 
 @router.post("/doc", response_model=PlanDocResponse)
 async def plan_doc(req: PlanDocRequest) -> PlanDocResponse:
@@ -174,39 +227,52 @@ async def plan_doc(req: PlanDocRequest) -> PlanDocResponse:
         is_chat = False
         blocks = []
 
-        if "## Blocks" not in raw_text:
+        if "## Blocks" not in raw_text and "### " not in raw_text:
             is_chat = True
         else:
             lines = raw_text.split("\n")
-            in_blocks_table = False
             for line in lines:
-                if line.startswith("## Blocks"):
-                    in_blocks_table = True
-                    continue
-                if in_blocks_table and line.startswith("## "):
-                    in_blocks_table = False
-                    continue
-                
-                if in_blocks_table and line.strip().startswith("|") and "Block ID" not in line and "---" not in line:
-                    parts = [p.strip() for p in line.split("|") if p.strip()]
-                    if len(parts) >= 4:
+                line = line.strip()
+                if line.startswith("### "):
+                    # More lenient block matching: `### Block Name (type)`
+                    match = re.search(r"^###\s+(.+?)(?:\s*\((.+?)\))?$", line)
+                    if match:
+                        block_title = match.group(1).strip("*_ \t")
+                        block_type = match.group(2).strip("*_ \t").lower() if match.group(2) else "service"
+                        
+                        # Filter out common markdown headers that aren't blocks
+                        if block_title.lower() in ["description", "responsibilities", "inputs", "outputs", "dependencies", "tech", "overview", "architecture"]:
+                            continue
+                            
+                        # Extract clean ID
+                        clean_id = re.sub(r'[^a-zA-Z0-9-]', '', block_type.replace(' ', '-'))
+                        if not clean_id:
+                            clean_id = "service"
+                            
                         blocks.append({
-                            "id": parts[0],
-                            "title": parts[1],
-                            "blockType": parts[2],
+                            "id": f"blk-{clean_id}-{len(blocks)}", # Ensure unique ID
+                            "title": block_title,
+                            "blockType": block_type,
                             "type": "block",
                             "stack": "Default Stack",
-                            "description": parts[3],
+                            "description": "",
                             "status": "idle",
                             "subBlocks": []
                         })
+
+        graph_data = extract_graph(raw_text)
+        try:
+            validate_graph(graph_data)
+        except ValueError as ve:
+            print(f"[plan-doc] Graph validation warning: {ve}")
 
         return PlanDocResponse(
             title=title,
             summary=summary,
             markdown=raw_text,
             blocks=blocks,
-            is_chat=is_chat
+            is_chat=is_chat,
+            graph=graph_data
         )
 
     except HTTPException:

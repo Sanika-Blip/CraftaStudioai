@@ -2,6 +2,12 @@ generator client {
   provider = "prisma-client-js"
 }
 
+generator py {
+  provider             = "prisma-client-py"
+  interface            = "asyncio"
+  recursive_type_depth = 5
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -111,9 +117,9 @@ enum ResolutionStatus {
   deferred
 }
 
-// ─────────────────────────────────────────
+// -----------------------------------------
 // User
-// ─────────────────────────────────────────
+// -----------------------------------------
 model User {
   id        String   @id @default(uuid())
   clerkId   String   @unique
@@ -133,9 +139,9 @@ model User {
   @@map("users")
 }
 
-// ─────────────────────────────────────────
+// -----------------------------------------
 // Team
-// ─────────────────────────────────────────
+// -----------------------------------------
 model Team {
   id              String   @id @default(uuid())
   name            String
@@ -152,9 +158,9 @@ model Team {
   @@map("teams")
 }
 
-// ─────────────────────────────────────────
-// TeamMember
-// ─────────────────────────────────────────
+// -----------------------------------------
+// TeamMember (join table for multi-user teams)
+// -----------------------------------------
 model TeamMember {
   id        String   @id @default(uuid())
   teamId    String
@@ -172,30 +178,39 @@ model TeamMember {
   @@map("team_members")
 }
 
-// ─────────────────────────────────────────
+// -----------------------------------------
 // Project
-// ─────────────────────────────────────────
+// -----------------------------------------
 model Project {
   id        String   @id @default(uuid())
   teamId    String
+  createdByUserId String?
   name      String
   document  ProjectDocument?
+  planDoc      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   team         Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  createdBy    User?         @relation(fields: [createdByUserId], references: [id])
   blocks       Block[]
   connections  Connection[]
   workflowRuns WorkflowRun[]
   memories     Memory[]
+  eventLogs    EventLog[]
+  graphSnapshots     GraphSnapshot[]
+  memorySummaries    MemorySummary[]
+  reasoningResults   ReasoningResult[]
+  conflictResolutions ConflictResolution[]
+  subgraphCaches     SubgraphCache[]
 
   @@index([teamId])
   @@map("projects")
 }
 
-// ─────────────────────────────────────────
+// -----------------------------------------
 // Block
-// ─────────────────────────────────────────
+// -----------------------------------------
 model Block {
   id                String    @id @default(uuid())
   projectId         String
@@ -232,9 +247,9 @@ model Block {
   @@map("blocks")
 }
 
-// ─────────────────────────────────────────
+// -----------------------------------------
 // Connection
-// ─────────────────────────────────────────
+// -----------------------------------------
 model Connection {
   id             String         @id @default(uuid())
   projectId      String
@@ -259,13 +274,13 @@ model Connection {
   @@map("connections")
 }
 
-// ─────────────────────────────────────────
-// WorkflowRun
-// ─────────────────────────────────────────
+// -----------------------------------------
+// WorkflowRun   now tracks which user triggered it
+// -----------------------------------------
 model WorkflowRun {
   id                String    @id @default(uuid())
   projectId         String
-  triggeredByUserId String
+  triggeredByUserId String    //  who initiated this run
   prompt            String
   status            RunStatus
   version           Int       @default(1)
@@ -285,8 +300,8 @@ model WorkflowRun {
   fileMetadata  FileMetadata[]
 
   @@index([projectId])
-  @@index([triggeredByUserId])
-  @@index([triggeredByUserId, projectId])
+  @@index([triggeredByUserId]) // query all runs by a user
+  @@index([triggeredByUserId, projectId]) // query runs by user + project
   @@index([createdAt])
   @@index([status])
   @@index([triggeredByUserId, createdAt])
@@ -294,9 +309,9 @@ model WorkflowRun {
   @@map("workflow_runs")
 }
 
-// ─────────────────────────────────────────
+// -----------------------------------------
 // BlockOutput
-// ─────────────────────────────────────────
+// -----------------------------------------
 model BlockOutput {
   id         String    @id @default(uuid())
   runId      String
@@ -320,14 +335,14 @@ model BlockOutput {
   @@map("block_outputs")
 }
 
-// ─────────────────────────────────────────
-// JobRun
-// ─────────────────────────────────────────
+// -----------------------------------------
+// JobRun   now tracks which user triggered it
+// -----------------------------------------
 model JobRun {
   id                String    @id @default(uuid())
   workflowRunId     String
   blockId           String?
-  triggeredByUserId String?
+  triggeredByUserId String? //  who triggered this specific job
   jobType           JobType
   status            RunStatus @default(pending)
   logs              Json?
@@ -345,16 +360,16 @@ model JobRun {
 
   @@index([workflowRunId])
   @@index([blockId])
-  @@index([triggeredByUserId])
+  @@index([triggeredByUserId]) // query all jobs by a user
   @@index([createdAt])
   @@index([status])
   @@index([jobType])
   @@map("job_runs")
 }
 
-// ─────────────────────────────────────────
+// -----------------------------------------
 // MergedOutput
-// ─────────────────────────────────────────
+// -----------------------------------------
 model MergedOutput {
   id            String   @id @default(uuid())
   workflowRunId String
@@ -370,14 +385,14 @@ model MergedOutput {
   @@map("merged_outputs")
 }
 
-// ─────────────────────────────────────────
-// ConflictLog
-// ─────────────────────────────────────────
+// -----------------------------------------
+// ConflictLog   now tracks which user it belongs to
+// -----------------------------------------
 model ConflictLog {
   id               String           @id @default(uuid())
   workflowRunId    String
   blockId          String?
-  attributedUserId String?
+  attributedUserId String?          //  which user's action caused this conflict
   conflictType     ConflictType
   message          String
   severity         ConflictSeverity
@@ -392,14 +407,14 @@ model ConflictLog {
 
   @@index([workflowRunId])
   @@index([blockId])
-  @@index([attributedUserId])
+  @@index([attributedUserId]) // query conflicts by user
   @@index([createdAt])
   @@map("conflict_logs")
 }
 
-// ─────────────────────────────────────────
+// -----------------------------------------
 // FileMetadata
-// ─────────────────────────────────────────
+// -----------------------------------------
 model FileMetadata {
   id            String    @id @default(uuid())
   workflowRunId String
@@ -420,9 +435,9 @@ model FileMetadata {
   @@map("file_metadata")
 }
 
-// ─────────────────────────────────────────
+// -----------------------------------------
 // Memory
-// ─────────────────────────────────────────
+// -----------------------------------------
 model Memory {
   id        String @id @default(uuid())
   projectId String
@@ -460,9 +475,9 @@ model Memory {
   @@map("memories")
 }
 
-// ─────────────────────────────────────────
+// -----------------------------------------
 // ProjectDocument
-// ─────────────────────────────────────────
+// -----------------------------------------
 model ProjectDocument {
   id        String         @id @default(uuid())
   projectId String         @unique
@@ -547,10 +562,13 @@ model EventLog {
   id          String    @id @default(uuid())
   projectId   String
   eventType   EventType
+  type        String?   // Keep for compatibility
   payload     Json
   triggeredBy String?
   processedAt DateTime?
+  processed   Boolean   @default(false) // Keep for compatibility
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -587,6 +605,7 @@ model ConflictResolution {
   @@index([createdAt])
   @@map("conflict_resolutions")
 }
+
 model SubgraphCache {
   id          String   @id @default(uuid())
   projectId   String
@@ -604,6 +623,7 @@ model SubgraphCache {
   @@index([blockId])
   @@map("subgraph_cache")
 }
+
 model BlockTemplate {
   id           String   @id @default(uuid())
   name         String   @unique
