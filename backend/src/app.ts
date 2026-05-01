@@ -44,21 +44,21 @@ export async function buildServer() {
 
   // ── Global Error Handler ──
   app.setErrorHandler((error: any, request, reply) => {
-    const statusCode = error.statusCode ?? 500
+  const statusCode = error.statusCode ?? 500
 
-    app.log.error({
-      err: error,
-      method: request.method,
-      url: request.url,
-      statusCode,
-    })
-
-    return reply.code(statusCode).send({
-      statusCode,
-      error: (error as any).name ?? 'Internal Server Error',
-      message: (error as any).message ?? 'An unexpected error occurred',
-    })
+  console.error({
+    err: error,
+    method: request.method,
+    url: request.url,
+    statusCode,
   })
+
+  return reply.code(statusCode).send({
+    statusCode,
+    error: (error as any).name ?? 'Internal Server Error',
+    message: (error as any).message ?? 'An unexpected error occurred',
+  })
+})
 
   // ── Routes ──
   await app.register(authRoutes, { prefix: '/api/auth' })
