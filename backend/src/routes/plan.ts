@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { verifyClerk } from '../middleware/clerkAuth'
 import prisma from '../lib/prisma'
-import { BLOCK_TYPES } from '../../../shared/types/blocks'
+import { BLOCK_TYPES } from '../shared/types/blocks'
 
 const PlanDocSchema = z.object({
   prompt: z.string().min(2),
