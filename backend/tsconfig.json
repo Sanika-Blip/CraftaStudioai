@@ -4,7 +4,7 @@
     "module": "commonjs",
     "lib": ["ES2022"],
     "types": ["node"],
-    "rootDirs": ["./src", "../shared"],
+    "rootDir": "./src",
     "outDir": "./dist",
     "strict": true,
     "esModuleInterop": true,
