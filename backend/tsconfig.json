@@ -4,7 +4,7 @@
     "module": "commonjs",
     "lib": ["ES2022"],
     "types": ["node"],
-    "rootDirs": ["./", "../shared"],
+    "rootDir": "./src",          // ← ADD THIS
     "outDir": "./dist",
     "strict": true,
     "esModuleInterop": true,
@@ -21,6 +21,6 @@
       "@shared/*": ["../shared/*"]
     }
   },
-  "include": ["src/**/*", "src/server.ts", "../shared/**/*"],
+  "include": ["src/**/*", "../shared/**/*"],
   "exclude": ["node_modules", "dist"]
 }
