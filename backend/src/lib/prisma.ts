@@ -26,12 +26,12 @@ const prisma = new PrismaClient({
 })
 
 /** Forward Prisma warnings to the process logger */
-prisma.$on('warn', (e) => {
+prisma.$on('warn', (e: any) => {
   process.stderr.write(`[Prisma warn] ${e.message}\n`)
 })
 
 /** Forward Prisma errors to the process logger */
-prisma.$on('error', (e) => {
+prisma.$on('error', (e: any) => {
   process.stderr.write(`[Prisma error] ${e.message}\n`)
 })
 

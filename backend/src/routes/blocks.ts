@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 const BLOCK_TYPES = ['data', 'api', 'ui', 'service', 'integration', 'auth', 'job'] as const;
 import prisma from "../lib/prisma";
-import { Prisma } from "@prisma/client";
+import type { InputJsonValue } from "@prisma/client/runtime/library";
 import { verifyClerk } from "../middleware/clerkAuth";
 import { getOrCreateUser } from "../lib/getOrCreateUser";
 
@@ -69,7 +69,7 @@ export async function blocksRoutes(app: FastifyInstance) {
       data: {
         projectId: parsed.data.projectId,
         blockType: parsed.data.blockType,
-        blockJson: parsed.data.blockJson as Prisma.InputJsonValue,
+        blockJson: parsed.data.blockJson as InputJsonValue,
       },
     });
 
@@ -95,7 +95,7 @@ export async function blocksRoutes(app: FastifyInstance) {
     const block = await prisma.block.update({
       where: { id },
       data: {
-        blockJson: parsed.data.blockJson as Prisma.InputJsonValue,
+        blockJson: parsed.data.blockJson as InputJsonValue,
       },
     });
 

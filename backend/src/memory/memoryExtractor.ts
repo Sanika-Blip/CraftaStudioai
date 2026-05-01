@@ -32,62 +32,62 @@ interface SignalPattern {
 const SIGNAL_PATTERNS: SignalPattern[] = [
   {
     pattern: /(?:use|using|with|database[:\s]+)\s*(postgresql|postgres|pg|mongodb|mongo|mysql|sqlite|supabase|neon|planetscale)/i,
-    key: 'database', type: MemoryType.decision, priority: Priority.high,
+    key: 'database', type: MemoryType.architecture_decision, priority: Priority.high,
     extract: m => normalizeValue(m[1]),
   },
   {
     pattern: /(?:use|using|auth(?:entication)?[:\s]+)\s*(clerk|jwt|nextauth|auth0|firebase|supabase auth)/i,
-    key: 'auth_provider', type: MemoryType.decision, priority: Priority.high,
+    key: 'auth_provider', type: MemoryType.architecture_decision, priority: Priority.high,
     extract: m => normalizeValue(m[1]),
   },
   {
     pattern: /(?:use|using|built with|framework[:\s]+)\s*(next\.?js|react|vue|svelte|fastify|express|nest\.?js)/i,
-    key: 'framework', type: MemoryType.decision, priority: Priority.high,
+    key: 'framework', type: MemoryType.architecture_decision, priority: Priority.high,
     extract: m => normalizeValue(m[1]),
   },
   {
     pattern: /(?:language[:\s]+|written in|use)\s*(typescript|javascript|python|ts|js)/i,
-    key: 'language', type: MemoryType.preference, priority: Priority.normal,
+    key: 'language', type: MemoryType.preference, priority: Priority.medium,
     extract: m => normalizeValue(m[1]),
   },
   {
     pattern: /(?:use|orm[:\s]+)\s*(prisma|drizzle|typeorm|sequelize|mongoose)/i,
-    key: 'orm', type: MemoryType.decision, priority: Priority.high,
+    key: 'orm', type: MemoryType.architecture_decision, priority: Priority.high,
     extract: m => normalizeValue(m[1]),
   },
   {
     pattern: /(?:use|styling[:\s]+|css[:\s]+)\s*(tailwind(?:css)?|styled-components|css modules|scss|sass)/i,
-    key: 'styling', type: MemoryType.preference, priority: Priority.normal,
+    key: 'styling', type: MemoryType.preference, priority: Priority.medium,
     extract: m => normalizeValue(m[1]),
   },
   {
     pattern: /(?:use|build|create)\s+(rest(?:ful)?|graphql|trpc|grpc)\s+api/i,
-    key: 'api_style', type: MemoryType.decision, priority: Priority.high,
+    key: 'api_style', type: MemoryType.architecture_decision, priority: Priority.high,
     extract: m => normalizeValue(m[1]),
   },
   {
     pattern: /(?:use|with)\s+(redis|memcached|upstash)\s*(?:for\s+(?:cache|caching|queue))?/i,
-    key: 'cache_provider', type: MemoryType.decision, priority: Priority.normal,
+    key: 'cache_provider', type: MemoryType.architecture_decision, priority: Priority.medium,
     extract: m => normalizeValue(m[1]),
   },
   {
     pattern: /(?:deploy|host|hosting)\s+(?:on|to|with)\s+(vercel|railway|render|aws|gcp|azure|fly\.io)/i,
-    key: 'hosting', type: MemoryType.constraint, priority: Priority.normal,
+    key: 'hosting', type: MemoryType.constraint, priority: Priority.medium,
     extract: m => normalizeValue(m[1]),
   },
   {
     pattern: /(?:use|store files|upload to)\s+(s3|r2|cloudflare r2|supabase storage|uploadthing)/i,
-    key: 'file_storage', type: MemoryType.decision, priority: Priority.normal,
+    key: 'file_storage', type: MemoryType.architecture_decision, priority: Priority.medium,
     extract: m => normalizeValue(m[1]),
   },
   {
     pattern: /(?:must be|should be|needs to be)\s+(fast|performant|optimized|lightweight)/i,
-    key: 'performance_requirement', type: MemoryType.constraint, priority: Priority.normal,
+    key: 'performance_requirement', type: MemoryType.constraint, priority: Priority.medium,
     extract: m => m[1].toLowerCase(),
   },
   {
     pattern: /(?:mobile[- ]first|responsive design|support mobile)/i,
-    key: 'responsive_design', type: MemoryType.constraint, priority: Priority.normal,
+    key: 'responsive_design', type: MemoryType.constraint, priority: Priority.medium,
     extract: () => 'required',
   },
 ]

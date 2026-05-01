@@ -64,9 +64,9 @@ export default function CraftaStudio() {
         const user = await res.json() as { teams?: { projects?: { id: string; name: string }[] }[] };
         const firstProject = user?.teams?.[0]?.projects?.[0];
         if (firstProject) {
-          setProjectId(firstProject.id);
-          setProjectName(firstProject.name);
-        }
+  setProjectId(firstProject.id);
+  setProjectName(firstProject.name ?? "Untitled Project");
+}
       } catch (err: unknown) {
         if (err instanceof Error && err.name === "AbortError") return;
         console.error("[Dashboard] Failed to sync user:", err);
@@ -92,11 +92,11 @@ export default function CraftaStudio() {
   }, []);
 
   // Called by HistoryPanel when user loads a past run
-  const handleSelectRun = useCallback((runId: string) => {
-    setCurrentRunId(runId);
-    setHasGeneratedOutput(true);
-    setActiveTab("code");
-  }, []);
+  const handleSelectRun = useCallback((runId: string, blockOutputs?: BlockOutput[]) => {
+  setCurrentRunId(runId);
+  setHasGeneratedOutput(true);
+  setActiveTab("code");
+}, []);
 
   if (!isLoaded || !isSignedIn) {
     return (

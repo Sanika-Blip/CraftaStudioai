@@ -17,7 +17,7 @@ export async function upsertMemory(
         projectId,
         key: signal.key,
         value: { data: signal.value } as any,
-        entryType: signal.type,   // ← 'entryType' is the actual schema field, not 'type'
+        type: signal.type,
         priority: signal.priority,
         source: signal.source,
         confidence: 0.6,
@@ -46,7 +46,7 @@ export async function upsertMemory(
       where: { projectId_key: { projectId, key: signal.key } },
       data: {
         value: { data: signal.value } as any,
-        entryType: signal.type,   // ← correct field name
+        type: signal.type,
         priority: signal.priority,
         source: signal.source,
         confidence: 0.6,
@@ -85,9 +85,9 @@ export async function captureOutputSignals(
     inferredSignals.push({
       key: 'orm',
       value: 'prisma',
-      type: MemoryType.decision,
+      type: MemoryType.architecture_decision,
       priority: Priority.high,
-      source: MemorySource.ai_agent,
+      source: MemorySource.inferred,
     })
   }
 
@@ -95,9 +95,9 @@ export async function captureOutputSignals(
     inferredSignals.push({
       key: 'framework',
       value: 'fastify',
-      type: MemoryType.decision,
+      type: MemoryType.architecture_decision,
       priority: Priority.high,
-      source: MemorySource.ai_agent,
+      source: MemorySource.inferred,
     })
   }
 
@@ -106,8 +106,8 @@ export async function captureOutputSignals(
       key: 'styling',
       value: 'tailwindcss',
       type: MemoryType.preference,
-      priority: Priority.normal,
-      source: MemorySource.ai_agent,
+      priority: Priority.medium,
+      source: MemorySource.inferred,
     })
   }
 
@@ -115,24 +115,24 @@ export async function captureOutputSignals(
     inferredSignals.push({
       key: 'framework',
       value: 'react',
-      type: MemoryType.decision,
+      type: MemoryType.architecture_decision,
       priority: Priority.high,
-      source: MemorySource.ai_agent,
+      source: MemorySource.inferred,
     })
   }
 
   // Lines 106, 112, 124 in the error — 'architecture_decision' and 'inferred'
   // don't exist in the schema enums. Map them to valid values:
-  // 'architecture_decision' → MemoryType.decision
-  // 'inferred' → MemorySource.ai_agent
-  // 'medium' → Priority.normal
+  // 'architecture_decision' → MemoryType.architecture_decision
+  // 'inferred' → MemorySource.inferred
+  // 'medium' → Priority.medium
   if (/next\.?js|react|vue|svelte/i.test(outputCode)) {
     inferredSignals.push({
       key: 'frontend_framework',
       value: outputCode.match(/next\.?js|react|vue|svelte/i)?.[0]?.toLowerCase() ?? 'react',
-      type: MemoryType.decision,
+      type: MemoryType.architecture_decision,
       priority: Priority.high,
-      source: MemorySource.ai_agent,
+      source: MemorySource.inferred,
     })
   }
 
@@ -140,9 +140,9 @@ export async function captureOutputSignals(
     inferredSignals.push({
       key: 'database',
       value: outputCode.match(/postgresql|mongodb|mysql|sqlite/i)?.[0]?.toLowerCase() ?? 'postgresql',
-      type: MemoryType.decision,
-      priority: Priority.normal,
-      source: MemorySource.ai_agent,
+      type: MemoryType.architecture_decision,
+      priority: Priority.medium,
+      source: MemorySource.inferred,
     })
   }
 

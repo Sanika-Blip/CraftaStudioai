@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "prisma generate --generator client",
     "dev": "nodemon --exec ts-node server.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "prisma generate --generator client && tsc -p tsconfig.json",
     "start": "node dist/backend/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

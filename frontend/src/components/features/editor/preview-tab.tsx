@@ -92,7 +92,7 @@ export function PreviewTab({ projectId }: PreviewTabProps) {
   // WebSocket: auto-refresh when blocks complete
   useEffect(() => {
     if (!projectId) return;
-    const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004").replace("http", "ws")}/ws?projectId=${projectId}`;
+    const wsUrl = `${(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3004").replace("http", "ws")}/api/ws/${projectId}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     ws.onmessage = (evt) => {

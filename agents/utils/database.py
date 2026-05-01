@@ -3,16 +3,30 @@ import json
 import psycopg2
 from psycopg2.extras import Json
 from typing import Optional
+from urllib.parse import urlparse
 
 def get_db_connection():
     """Establishes connection to the Durable Store (PostgreSQL)[cite: 195]."""
-    return psycopg2.connect(
-        host=os.getenv("DB_HOST", "localhost"),
-        database=os.getenv("DB_NAME", "craftastudio"),
-        user=os.getenv("DB_USER", "postgres"),
-        password=os.getenv("DB_PASSWORD", "password"),
-        port=os.getenv("DB_PORT", "5432")
-    )
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        # Parse DATABASE_URL
+        parsed = urlparse(database_url)
+        return psycopg2.connect(
+            host=parsed.hostname,
+            database=parsed.path.lstrip('/'),
+            user=parsed.username,
+            password=parsed.password,
+            port=parsed.port
+        )
+    else:
+        # Fallback to individual variables
+        return psycopg2.connect(
+            host=os.getenv("DB_HOST", "localhost"),
+            database=os.getenv("DB_NAME", "craftastudio"),
+            user=os.getenv("DB_USER", "postgres"),
+            password=os.getenv("DB_PASSWORD", "password"),
+            port=os.getenv("DB_PORT", "5432")
+        )
 
 def update_db_and_status(run_id: str, status: str, context: Optional[any] = None):
     """

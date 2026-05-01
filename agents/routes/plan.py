@@ -130,6 +130,117 @@ def repair_json(raw: str) -> str:
     return segment
 
 
+def parse_markdown_table(rows: list[str]) -> list[dict]:
+    if len(rows) < 3:
+        return []
+
+    header_cells = [cell.strip().lower() for cell in rows[0].strip().strip('|').split('|') if cell.strip()]
+    separator = rows[1].strip()
+    # Allow markdown table separator lines like | --- | --- | --- |
+    if not re.match(r'^\s*\|?\s*[:-]+(?:\s*\|\s*[:-]+)*\s*\|?\s*$', separator):
+        return []
+
+    parsed = []
+    for line in rows[2:]:
+        if not line.strip():
+            continue
+        if line.strip().startswith('## '):
+            break
+        if '|' not in line:
+            break
+
+        values = [cell.strip() for cell in line.strip().strip('|').split('|')]
+        if len(values) < len(header_cells):
+            continue
+
+        row = {header_cells[i]: values[i] for i in range(min(len(header_cells), len(values)))}
+        if any(value for value in row.values()):
+            parsed.append(row)
+
+    return parsed
+
+
+def parse_blocks_from_markdown(raw_text: str) -> list[dict]:
+    lines = raw_text.split('\n')
+    blocks = []
+
+    section_start = None
+    for idx, line in enumerate(lines):
+        if line.strip().lower().startswith('## blocks'):
+            section_start = idx + 1
+            break
+
+    if section_start is not None:
+        section_lines = []
+        for line in lines[section_start:]:
+            if line.strip().startswith('## ') and not line.strip().lower().startswith('## blocks'):
+                break
+            section_lines.append(line)
+
+        table_start = None
+        for idx, line in enumerate(section_lines):
+            if '|' in line and not line.strip().startswith('|---') and not line.strip().startswith('---'):
+                table_start = idx
+                break
+
+        if table_start is not None:
+            table_rows = []
+            for line in section_lines[table_start:]:
+                if not line.strip() or line.strip().startswith('## '):
+                    break
+                if '|' not in line:
+                    break
+                table_rows.append(line)
+
+            parsed_rows = parse_markdown_table(table_rows)
+            for row in parsed_rows:
+                block_id = row.get('block id') or row.get('id') or f'blk-{len(blocks)}'
+                block_type = row.get('type') or 'service'
+                title = row.get('name') or row.get('title') or block_id
+                description = row.get('responsibility') or row.get('responsibilities') or ''
+
+                blocks.append({
+                    'id': block_id,
+                    'title': title,
+                    'blockType': block_type.lower(),
+                    'type': 'block',
+                    'stack': 'Default Stack',
+                    'description': description,
+                    'status': 'idle',
+                    'subBlocks': [],
+                })
+
+    if blocks:
+        return blocks
+
+    for line in lines:
+        line = line.strip()
+        if line.startswith('### '):
+            match = re.search(r'^###\s+(.+?)(?:\s*\((.+?)\))?$', line)
+            if match:
+                block_title = match.group(1).strip('*_ \t')
+                block_type = match.group(2).strip('*_ \t').lower() if match.group(2) else 'service'
+
+                if block_title.lower() in ['description', 'responsibilities', 'inputs', 'outputs', 'dependencies', 'tech', 'overview', 'architecture']:
+                    continue
+
+                clean_id = re.sub(r'[^a-zA-Z0-9-]', '', block_type.replace(' ', '-'))
+                if not clean_id:
+                    clean_id = 'service'
+
+                blocks.append({
+                    'id': f'blk-{clean_id}-{len(blocks)}',
+                    'title': block_title,
+                    'blockType': block_type,
+                    'type': 'block',
+                    'stack': 'Default Stack',
+                    'description': '',
+                    'status': 'idle',
+                    'subBlocks': [],
+                })
+
+    return blocks
+
 
 # ── Existing plan endpoint models ──────────────────────────────────────────────
 class PlanRequest(BaseModel):
@@ -230,35 +341,9 @@ async def plan_doc(req: PlanDocRequest) -> PlanDocResponse:
         if "## Blocks" not in raw_text and "### " not in raw_text:
             is_chat = True
         else:
-            lines = raw_text.split("\n")
-            for line in lines:
-                line = line.strip()
-                if line.startswith("### "):
-                    # More lenient block matching: `### Block Name (type)`
-                    match = re.search(r"^###\s+(.+?)(?:\s*\((.+?)\))?$", line)
-                    if match:
-                        block_title = match.group(1).strip("*_ \t")
-                        block_type = match.group(2).strip("*_ \t").lower() if match.group(2) else "service"
-                        
-                        # Filter out common markdown headers that aren't blocks
-                        if block_title.lower() in ["description", "responsibilities", "inputs", "outputs", "dependencies", "tech", "overview", "architecture"]:
-                            continue
-                            
-                        # Extract clean ID
-                        clean_id = re.sub(r'[^a-zA-Z0-9-]', '', block_type.replace(' ', '-'))
-                        if not clean_id:
-                            clean_id = "service"
-                            
-                        blocks.append({
-                            "id": f"blk-{clean_id}-{len(blocks)}", # Ensure unique ID
-                            "title": block_title,
-                            "blockType": block_type,
-                            "type": "block",
-                            "stack": "Default Stack",
-                            "description": "",
-                            "status": "idle",
-                            "subBlocks": []
-                        })
+            blocks = parse_blocks_from_markdown(raw_text)
+            if not blocks:
+                is_chat = True
 
         graph_data = extract_graph(raw_text)
         try:

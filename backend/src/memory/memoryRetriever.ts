@@ -6,13 +6,13 @@ const DEFAULT_TOP_N = 20
 
 const PRIORITY_WEIGHT: Record<Priority, number> = {
   [Priority.high]: 3,
-  [Priority.normal]: 2,
+  [Priority.medium]: 2,
   [Priority.low]: 1,
 }
 
-// 'architecture_decision' is not a valid MemoryType — use MemoryType.decision
+// 'architecture_decision' is not a valid MemoryType — use MemoryType.architecture_decision
 const RELEVANT_TYPES: MemoryType[] = [
-  MemoryType.decision,
+  MemoryType.architecture_decision,
   MemoryType.preference,
   MemoryType.constraint,
   MemoryType.pattern,
@@ -36,7 +36,7 @@ export async function retrieveMemories(
     where: {
       projectId,
       confidence: { gte: confidenceThreshold },
-      entryType: { in: types },   // ← schema field is 'entryType', not 'type'
+      type: { in: types },   // ← schema field is 'type'
     },
     orderBy: [
       { confidence: 'desc' },

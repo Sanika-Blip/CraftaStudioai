@@ -11,6 +11,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
@@ -149,8 +150,29 @@ export function PlanDocPanel({
                 </div>
                 {isLoading ? "Generating Plan..." : planDoc?.title || "Architecture Plan"}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                {planDoc?.summary || "Review the generated architecture plan and click Implement This to generate code."}
+              </DialogDescription>
 
               <div className="flex items-center gap-2">
+                {planDoc && !isLoading && blockSummary.length > 0 && (
+                  <button
+                    onClick={() => { onImplement?.(); onClose(); }}
+                    disabled={isImplementing || !validation.valid || isEditing}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-[10px] uppercase tracking-wider transition-all duration-200",
+                      isImplementing || !validation.valid || isEditing
+                        ? "bg-[var(--primary-accent)]/20 text-[var(--primary-accent)]/60 cursor-not-allowed"
+                        : "bg-[var(--primary-accent)] text-white hover:opacity-90 active:scale-[0.98]"
+                    )}
+                  >
+                    {isImplementing ? (
+                      <><Loader2 className="size-3 animate-spin" /> Implementing...</>
+                    ) : (
+                      <><Zap className="size-3" /> Implement This</>
+                    )}
+                  </button>
+                )}
                 {planDoc && !planDoc.is_chat && !isLoading && (
                   <button
                     onClick={() => (isEditing ? handleSave() : setIsEditing(true))}
@@ -188,20 +210,39 @@ export function PlanDocPanel({
 
             {/* Block strip */}
             {!isLoading && blockSummary.length > 0 && (
-              <div className="px-6 py-3 border-b border-[var(--border)] flex gap-2 overflow-x-auto scrollbar-none">
-                {blockSummary.map((b) => (
-                  <div
-                    key={b.id}
-                    className="flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-full border border-[var(--border)] bg-[var(--foreground)]/[0.03] text-[11px] font-medium text-[var(--muted-foreground)]"
-                  >
-                    {b.status === "done" ? (
-                      <CheckCircle2 className="size-3 text-emerald-400 shrink-0" />
-                    ) : (
-                      <CircleDashed className="size-3 text-[var(--primary-accent)]/60 shrink-0" />
-                    )}
-                    {b.title}
-                  </div>
-                ))}
+              <div className="px-6 py-3 border-b border-[var(--border)] flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex gap-2 overflow-x-auto scrollbar-none">
+                  {blockSummary.map((b) => (
+                    <div
+                      key={b.id}
+                      className="flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-full border border-[var(--border)] bg-[var(--foreground)]/[0.03] text-[11px] font-medium text-[var(--muted-foreground)]"
+                    >
+                      {b.status === "done" ? (
+                        <CheckCircle2 className="size-3 text-emerald-400 shrink-0" />
+                      ) : (
+                        <CircleDashed className="size-3 text-[var(--primary-accent)]/60 shrink-0" />
+                      )}
+                      {b.title}
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => { onImplement?.(); onClose(); }}
+                  disabled={isImplementing || !validation.valid || isEditing}
+                  className={cn(
+                    "flex items-center gap-2 self-start rounded-xl px-4 py-2 text-[12px] font-semibold transition-all duration-200",
+                    isImplementing || !validation.valid || isEditing
+                      ? "bg-[var(--primary-accent)]/20 text-[var(--primary-accent)]/60 cursor-not-allowed"
+                      : "bg-[var(--primary-accent)] text-white hover:opacity-90 active:scale-[0.98]"
+                  )}
+                >
+                  {isImplementing ? (
+                    <><Loader2 className="size-4 animate-spin" /> Implementing...</>
+                  ) : (
+                    <><Zap className="size-4" /> Implement This</>
+                  )}
+                </button>
               </div>
             )}
 
@@ -252,42 +293,47 @@ export function PlanDocPanel({
               </div>
             )}
           </div>
-
-          {/* ── Footer ── */}
-          {planDoc && !planDoc.is_chat && !isLoading && (
-            <DialogFooter className="px-6 pb-6 pt-4 border-t border-[var(--border)] sm:justify-between gap-3 flex-row">
-              {/* Validation warning */}
-              {!validation.valid && (
-                <div className="flex items-center gap-2 text-amber-400 text-xs">
-                  <AlertTriangle className="size-3.5 shrink-0" />
-                  <span>Missing: {validation.missing.join(", ")}</span>
-                </div>
-              )}
-              {validation.valid && (
-                <p className="text-[11px] text-[var(--muted-foreground)] self-center">
-                  {blockSummary.length} block{blockSummary.length !== 1 ? "s" : ""} ready to generate
-                </p>
-              )}
-
-              <button
-                onClick={() => { onImplement?.(); onClose(); }}
-                disabled={isImplementing || !validation.valid || isEditing}
-                className={cn(
-                  "flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 shrink-0",
-                  isImplementing || !validation.valid || isEditing
-                    ? "bg-[var(--primary-accent)]/20 text-[var(--primary-accent)]/60 cursor-not-allowed"
-                    : "bg-[var(--primary-accent)] text-white hover:opacity-90 active:scale-[0.98] shadow-lg shadow-[var(--primary-accent)]/30"
-                )}
-              >
-                {isImplementing ? (
-                  <><Loader2 className="size-4 animate-spin" /> Implementing...</>
-                ) : (
-                  <><Zap className="size-4" /> Implement This</>
-                )}
-              </button>
-            </DialogFooter>
-          )}
         </ScrollArea>
+
+        {/* ── Footer ── */}
+        {planDoc && !isLoading && blockSummary.length > 0 && (
+          <DialogFooter className="px-6 pb-6 pt-4 border-t border-[var(--border)] sm:justify-between gap-3 flex-row">
+            {/* Validation warning */}
+            {!validation.valid && (
+              <div className="flex items-center gap-2 text-amber-400 text-xs">
+                <AlertTriangle className="size-3.5 shrink-0" />
+                <span>Missing: {validation.missing.join(", ")}</span>
+              </div>
+            )}
+            {validation.valid && (
+              <p className="text-[11px] text-[var(--muted-foreground)] self-center">
+                {blockSummary.length} block{blockSummary.length !== 1 ? "s" : ""} ready to generate
+              </p>
+            )}
+
+            <button
+              onClick={() => { onImplement?.(); onClose(); }}
+              disabled={isImplementing || !validation.valid || isEditing}
+              className={cn(
+                "flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all duration-200 shrink-0",
+                isImplementing || !validation.valid || isEditing
+                  ? "bg-[var(--primary-accent)]/20 text-[var(--primary-accent)]/60 cursor-not-allowed"
+                  : "bg-[var(--primary-accent)] text-white hover:opacity-90 active:scale-[0.98] shadow-lg shadow-[var(--primary-accent)]/30"
+              )}
+            >
+              {isImplementing ? (
+                <><Loader2 className="size-4 animate-spin" /> Implementing...</>
+              ) : (
+                <><Zap className="size-4" /> Implement This</>
+              )}
+            </button>
+          </DialogFooter>
+        )}
+        {!isLoading && planDoc && blockSummary.length === 0 && (
+          <div className="px-6 pb-6 pt-4 border-t border-[var(--border)] text-[11px] text-[var(--muted-foreground)]">
+            No structured blocks were parsed from this plan yet. Please review the plan content or regenerate it with a ## Blocks table.
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
