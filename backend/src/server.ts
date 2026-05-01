@@ -3,9 +3,9 @@
  * on port 3000 after setting up necessary configurations.
  */
 import "dotenv/config";
-import { buildServer } from "./src/app";
-import { redis } from "./src/config/redis";
-import { startBlockWorker } from './src/queue/blockWorker'
+import { buildServer } from "./app";
+import { redis } from "./config/redis";
+import { startBlockWorker } from './queue/blockWorker'
 
 const PORT = Number(process.env.PORT) || 3001;
 
