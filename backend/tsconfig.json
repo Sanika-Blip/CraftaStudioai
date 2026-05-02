@@ -4,6 +4,7 @@
     "module": "commonjs",
     "lib": ["ES2022"],
     "types": ["node"],
+    "typeRoots": ["./node_modules/@types", "./src/types"],
     "rootDir": "./src",
     "outDir": "./dist",
     "strict": true,

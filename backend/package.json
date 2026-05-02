@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "postinstall": "prisma generate --generator client",
-    "dev": "nodemon --exec ts-node server.ts",
+    "dev": "nodemon --exec ts-node src/server.ts",
     "build": "prisma generate --generator client && tsc -p tsconfig.json",
     "start": "node dist/backend/server.js",
     "prisma:generate": "prisma generate",

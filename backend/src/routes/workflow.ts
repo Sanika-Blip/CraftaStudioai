@@ -9,6 +9,8 @@ import prisma from '../lib/prisma'
 import { verifyClerk } from "../middleware/clerkAuth"
 import { getOrCreateUser } from "../lib/getOrCreateUser"
 import { broadcastToProject } from '../ws/wsManager'
+import { emitWorkflowStarted, emitWorkflowCompleted } from '../graph/graphEvents'
+import { graphRegistry } from '../graph/graphEngine'
 
 const RunWorkflowSchema = z.object({
   projectId: z.string().uuid(),
@@ -149,7 +151,21 @@ export async function workflowRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'No blocks found. Please generate a plan first.' })
     }
 
-    console.log(`[workflow] ${blocks.length} blocks found — starting sequential generation`)
+    console.log(`[workflow] ${blocks.length} blocks found — computing generation order`)
+
+    // Use topological sort for correct generation order
+    let orderedBlockIds: string[] = []
+    try {
+      const engine = await graphRegistry.get(projectId)
+      orderedBlockIds = engine.topologicalSort()
+    } catch {
+      // Fallback to creation order if cycle detected
+      orderedBlockIds = blocks.map(b => b.id)
+    }
+    const blockMap = new Map(blocks.map(b => [b.id, b]))
+    const orderedBlocks = orderedBlockIds
+      .map(id => blockMap.get(id))
+      .filter(Boolean) as typeof blocks
 
     // Create a workflow run record
     const run = await prisma.workflowRun.create({
@@ -165,8 +181,11 @@ export async function workflowRoutes(app: FastifyInstance) {
     // Respond immediately so the frontend doesn't wait
     reply.code(202).send({ runId: run.id, status: 'running', blockCount: blocks.length })
 
-    // Generate only the first block asynchronously
-    const firstBlock = blocks[0]
+    // Emit workflow started event
+    emitWorkflowStarted(projectId, run.id, user.id).catch(() => {})
+
+    // Generate only the first block (in topo order)
+    const firstBlock = orderedBlocks[0]
     generateBlock(run.id, projectId, firstBlock.id, firstBlock.blockType, firstBlock.blockJson, prompt)
   })
 
@@ -229,6 +248,7 @@ export async function workflowRoutes(app: FastifyInstance) {
         data: { status: 'done' },
       })
       broadcastToProject(projectId, { event: 'workflow:completed', runId })
+      emitWorkflowCompleted(projectId, runId).catch(() => {})
       return reply.send({ status: 'workflow_completed' })
     }
   })

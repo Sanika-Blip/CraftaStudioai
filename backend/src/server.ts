@@ -2,6 +2,7 @@
  * The above TypeScript code initializes a server, connects to a Redis database, and starts the server
  * on port 3000 after setting up necessary configurations.
  */
+/// <reference path="./types/fastify.d.ts" />
 import "dotenv/config";
 import { buildServer } from "./app";
 import { redis } from "./config/redis";
