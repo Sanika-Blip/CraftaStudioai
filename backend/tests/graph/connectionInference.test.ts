@@ -84,7 +84,7 @@ function resetMocks() {
 
 // ─── Import after mocks ───────────────────────────────────────────────────────
 
-import { inferConnections } from '../connectionInference'
+import { inferConnections } from '../../src/graph/connectionInference'
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
