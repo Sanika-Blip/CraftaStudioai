@@ -11,6 +11,7 @@ import { PreviewTab } from "@/components/features/editor/preview-tab";
 import { SettingsPanel } from "@/components/features/settings/settings-panel";
 import { MainSidebar } from "@/components/layout/main-sidebar";
 import { HistoryPanel } from "@/components/features/canvas/history-panel";
+import { BlockOutput } from "@/types/block";
 
 export default function CraftaStudio() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
